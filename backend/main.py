@@ -4,7 +4,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from typing import Optional, List, Dict
 from datetime import datetime
 from dotenv import load_dotenv
-from database import get_db
+from database import get_db  # Direct import
 from models import UserCreate, User, UserLogin, Project, Submission, ManualTest
 import json
 import os
@@ -115,6 +115,27 @@ async def get_projects(user_id: str = None, db = Depends(get_db)):
         cursor.close()
         return projects
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/projects")
+async def create_project(request: Request):
+    try:
+        data = await request.json()
+        project_id = str(uuid.uuid4())
+        print(f"Creating project with data: {data}")  # Debug log
+        
+        with get_db() as (conn, cursor):
+            cursor.execute("""
+                INSERT INTO projects (id, name, description)
+                VALUES (%s, %s, %s)
+                RETURNING id
+            """, (project_id, data['name'], data.get('description', '')))
+            conn.commit()
+            print(f"Project created with ID: {project_id}")  # Debug log
+            return {"success": True, "project_id": project_id}
+            
+    except Exception as e:
+        print(f"Error creating project: {e}")  # Debug log
         raise HTTPException(status_code=500, detail=str(e))
 
 # Submission endpoints

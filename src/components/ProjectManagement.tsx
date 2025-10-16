@@ -13,6 +13,7 @@ import { Plus, Users, FolderKanban, Trash2, UserPlus, Search, Check, Clock } fro
 import { Project, User, UserRole } from '../types';
 import { toast } from 'sonner@2.0.3';
 import { cn } from './ui/utils';
+import { projectsApi } from '../services/api';
 
 type ProjectManagementProps = {
   projects: Project[];
@@ -44,32 +45,25 @@ export function ProjectManagement({
   const [openCombobox, setOpenCombobox] = useState<Record<string, boolean>>({});
   const [recentConnections, setRecentConnections] = useState<string[]>([]);
 
-  const handleCreateProject = () => {
-    if (!newProjectName.trim()) {
-      toast.error('Please enter a project name');
-      return;
+  const handleCreateProject = async (data: { name: string; description: string }) => {
+    try {
+      console.log('Creating project:', data); // Debug log
+      const response = await projectsApi.create({
+        name: data.name,
+        description: data.description
+      });
+      console.log('Project creation response:', response); // Debug log
+      
+      if (response.data.success) {
+        toast.success('Project created successfully');
+        // Refresh projects list
+        const updatedProjects = await projectsApi.getAll();
+        setProjects(updatedProjects.data);
+      }
+    } catch (error) {
+      console.error('Failed to create project:', error);
+      toast.error('Failed to create project');
     }
-
-    onCreateProject({
-      name: newProjectName.trim(),
-      description: newProjectDescription.trim(),
-      companyId: currentUser.companyId,
-      createdBy: currentUser.id,
-      members: [
-        {
-          userId: currentUser.id,
-          userName: currentUser.name,
-          role: 'lead',
-          assignedAt: new Date().toISOString(),
-        },
-      ],
-      status: 'active',
-    });
-
-    setNewProjectName('');
-    setNewProjectDescription('');
-    setIsCreateDialogOpen(false);
-    toast.success('Project created successfully!');
   };
 
   const handleAddMember = (projectId: string) => {
@@ -159,7 +153,10 @@ export function ProjectManagement({
                   rows={3}
                 />
               </div>
-              <Button onClick={handleCreateProject} className="w-full bg-[#F46F50] hover:bg-[#e05a3d] text-white">
+              <Button
+                onClick={() => handleCreateProject({ name: newProjectName, description: newProjectDescription })}
+                className="w-full bg-[#F46F50] hover:bg-[#e05a3d] text-white"
+              >
                 Create Project
               </Button>
             </div>

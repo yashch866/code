@@ -12,7 +12,7 @@ import { mockSubmissions, mockCompany, mockProjects } from './data/mockData';
 import { Submission, User, Project, UserRole, ProjectMember } from './types';
 import { toast } from 'sonner@2.0.3';
 import { Toaster } from './components/ui/sonner';
-import { authApi } from './services/api';
+import { authApi, projectsApi } from './services/api';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -97,14 +97,19 @@ export default function App() {
     });
   };
 
-  const handleCreateProject = (projectData: Omit<Project, 'id' | 'createdAt'>) => {
-    const newProject: Project = {
-      ...projectData,
-      id: `project-${Date.now()}`,
-      createdAt: new Date().toISOString(),
-    };
-
-    setProjects([...projects, newProject]);
+  const handleCreateProject = async (projectData: Omit<Project, 'id' | 'created_at' | 'status'>) => {
+    try {
+      const response = await projectsApi.create(projectData);
+      console.log('Project creation response:', response.data);
+      
+      // Fetch updated projects list
+      const projectsResponse = await projectsApi.getAll();
+      setProjects(projectsResponse.data);
+      toast.success('Project created successfully');
+    } catch (error) {
+      console.error('Error creating project:', error);
+      toast.error('Failed to create project');
+    }
   };
 
   const handleAddMember = (projectId: string, userId: string, role: UserRole) => {

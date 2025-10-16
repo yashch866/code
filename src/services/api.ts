@@ -33,7 +33,21 @@ export const authApi = {
 
 export const projectsApi = {
   getAll: () => api.get('/projects'),
-  create: (data: any) => api.post('/projects', data)
+  getByUser: (userId: string) => api.get(`/projects?user_id=${userId}`),
+  create: async (projectData: any) => {
+    try {
+      console.log('Creating project with data:', projectData);
+      const response = await api.post('/projects', {
+        name: projectData.name,
+        description: projectData.description || ''
+      });
+      console.log('Project creation response:', response);
+      return response;
+    } catch (error) {
+      console.error('Error creating project:', error);
+      throw error;
+    }
+  }
 };
 
 export const submissionsApi = {

@@ -46,6 +46,60 @@ def get_db():
         if connection and connection.is_connected():
             connection.close()
 
+# Database initialization
+def init_db():
+    """Initialize database tables"""
+    try:
+        with get_db() as (cursor, connection):
+            # Create users table if not exists
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id VARCHAR(36) PRIMARY KEY,
+                    username VARCHAR(50) UNIQUE NOT NULL,
+                    password VARCHAR(100) NOT NULL,
+                    name VARCHAR(100) NOT NULL,
+                    email VARCHAR(100) UNIQUE NOT NULL,
+                    INDEX username_idx (username),
+                    INDEX email_idx (email)
+                )
+            """)
+            
+            # Create projects table if not exists
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS projects (
+                    id VARCHAR(36) PRIMARY KEY,
+                    name VARCHAR(100) NOT NULL,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    status VARCHAR(20) DEFAULT 'active',
+                    INDEX name_idx (name),
+                    INDEX status_idx (status)
+                )
+            """)
+            
+            # Create project_members table if not exists
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS project_members (
+                    project_id VARCHAR(36),
+                    user_id VARCHAR(36),
+                    role VARCHAR(20) NOT NULL,
+                    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (project_id, user_id),
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                    INDEX role_idx (role)
+                )
+            """)
+            
+            connection.commit()
+            print("✓ Database tables created successfully")
+    except Exception as e:
+        print(f"✗ Database initialization error: {e}")
+        raise e
+
+# Initialize database tables
+init_db()
+
 # ============= PYDANTIC MODELS =============
 class UserRegister(BaseModel):
     username: str
