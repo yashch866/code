@@ -39,7 +39,8 @@ export const projectsApi = {
       console.log('Creating project with data:', projectData);
       const response = await api.post('/projects', {
         name: projectData.name,
-        description: projectData.description || ''
+        description: projectData.description || '',
+        creator_id: projectData.creator_id  // Add creator_id to request
       });
       console.log('Project creation response:', response);
       return response;

@@ -1,69 +1,52 @@
-# Database Schema - SakarRobotics Code Review System
+# Database Schema - Code Review System
 
 ## Entity Relationship Diagram
 
 ```
                     ┌─────────────────────┐
-                    │       USERS         │ ◄────────────────┐
-                    ├─────────────────────┤                  │
-                    │ id (PK)            │                  │
-                    │ username           │                  │
-                    │ password           │                  │
-                    │ name               │                  │
-                    │ email              │                  │
-                    └──────────┬──────────┘                  │
-                               │                             │
-                               │ 1                           │
-                               │                             │
-         ┌─────────────────────┼─────────────────┐           │
-         │                     │                 │           │
-         │ *                   │ *               │           │
-         │                     │                 │           │
-┌────────┴────────────┐ ┌──────┴──────────────┐ │           │
-│  PROJECT_MEMBERS    │ │   SUBMISSIONS       │ │           │
-│  (Junction Table)   │ │                     │ │           │
-├─────────────────────┤ ├─────────────────────┤ │           │
-│ id (PK)            │ │ id (PK)            │ │           │
-│ user_id (FK) ──────┼─┼─► developer_id (FK) ├─┘ References USERS.id
-│ project_id (FK) ────┼─┼─┐ project_id (FK)   │             │
-│ role               │ │ │ code               │             │
-│  ('developer',     │ │ │ description        │             │
-│   'lead',          │ │ │ submitted_date     │             │
-│   'reviewer')      │ │ │ status             │             │
-└─────────┬───────────┘ │ │ assigned_to[]      │             │
-          │             │ │ lead_comments      │             │
-          │ *           │ │ reviewer_comments  │             │
-          │             │ │ ai_test_results    │             │
-          │ 1           │ │ files[]            │             │
-          │             │ └──────────┬──────────┘             │
-          │             │            │                        │
-┌─────────┴───────────┐ │            │ 1                      │
-│      PROJECTS       │ │            │                        │
-├─────────────────────┤ │            │ *                      │
-│ id (PK)            │◄┘            │                        │
-│ name               │              │                        │
-│ description        │    ┌─────────┴──────────────┐         │
-│ created_date       │    │    MANUAL_TESTS        │         │
-└─────────────────────┘    ├────────────────────────┤         │
-                           │ id (PK)               │         │
-                           │ submission_id (FK) ───┼─────────┘
-                           │ name                  │   References SUBMISSIONS.id
-                           │ status                │
-                           │  ('passed', 'failed', │
-                           │   'pending')          │
-                           │ description           │
-                           └───────────────────────┘
-
-
-═══════════════════════════════════════════════════════════════════
-                        🔗 ALL TABLES ARE CONNECTED 🔗
-═══════════════════════════════════════════════════════════════════
-
-               USERS ←→ PROJECT_MEMBERS ←→ PROJECTS
-                 ↓              ↑              ↓
-                 └──→ SUBMISSIONS ←───────────┘
-                          ↓
-                    MANUAL_TESTS
+                    │       USERS         │
+                    ├─────────────────────┤
+                    │ id (PK) AUTO_INC   │
+                    │ username UNIQUE     │
+                    │ password           │
+                    │ name               │
+                    │ email UNIQUE       │
+                    └──────────┬──────────┘
+                               │
+                               │ 1
+                               │
+         ┌─────────────────────┼─────────────────┐
+         │                     │                 │
+         │ *                   │ *               │
+         │                     │                 │
+┌────────┴────────────┐ ┌──────┴─────────────┐
+│  PROJECT_MEMBERS    │ │   SUBMISSIONS       │
+├─────────────────────┤ ├───────────────────┤
+│ id (PK) AUTO_INC   │ │ id (PK) AUTO_INC  │
+│ user_id (FK)       │ │ project_id (FK)    │
+│ project_id (FK)    │ │ developer_id (FK)  │
+│ role               │ │ code TEXT          │
+│  ('developer',     │ │ description TEXT   │
+│   'lead',          │ │ submitted_date     │
+│   'reviewer')      │ │ status            │
+└─────────┬──────────┘ └──────────┬────────┘
+          │                       │
+          │ *                     │ 1
+          │                       │
+┌─────────┴──────────┐           │
+│     PROJECTS       │           │
+├──────────────────┤           │
+│ id (PK) AUTO_INC │           │
+│ name             │           │ *
+│ description      │  ┌────────┴──────────┐
+│ creator_id (FK)  │  │   MANUAL_TESTS    │
+└──────────────────┘  ├─────────────────┤
+                      │ id (PK) AUTO_INC │
+                      │ submission_id FK │
+                      │ name            │
+                      │ status          │
+                      │ description     │
+                      └─────────────────┘
 ```
 
 ## How All Tables Connect
@@ -137,92 +120,63 @@ The schema forms a **fully connected graph** where all 5 tables are linked:
 
 ### **USERS**
 ```sql
-Table: users
-┌──────────────┬──────────┬─────────────┐
-│ Column       │ Type     │ Constraints │
-├──────────────┼──────────┼─────────────┤
-│ id           │ string   │ PRIMARY KEY │
-│ username     │ string   │ UNIQUE      │
-│ password     │ string   │ NOT NULL    │
-│ name         │ string   │ NOT NULL    │
-│ email        │ string   │ UNIQUE      │
-└──────────────┴──────────┴─────────────┘
+CREATE TABLE users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(255) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE
+);
 ```
 
 ### **PROJECTS**
 ```sql
-Table: projects
-┌──────────────┬──────────┬─────────────┐
-│ Column       │ Type     │ Constraints │
-├──────────────┼──────────┼─────────────┤
-│ id           │ string   │ PRIMARY KEY │
-│ name         │ string   │ NOT NULL    │
-│ description  │ string   │             │
-│ created_date │ datetime │ NOT NULL    │
-└──────────────┴──────────┴─────────────┘
+CREATE TABLE projects (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    creator_id INT,
+    FOREIGN KEY (creator_id) REFERENCES users(id)
+);
 ```
 
 ### **PROJECT_MEMBERS** (Junction Table)
 ```sql
-Table: project_members
-┌────────────┬────────────────────────────────────┬─────────────┐
-│ Column     │ Type                               │ Constraints │
-├────────────┼────────────────────────────────────┼─────────────┤
-│ id         │ string                             │ PRIMARY KEY │
-│ user_id    │ string (FK → users.id)            │ NOT NULL    │
-│ project_id │ string (FK → projects.id)         │ NOT NULL    │
-│ role       │ enum('developer','lead','reviewer')│ NOT NULL    │
-└────────────┴────────────────────────────────────┴─────────────┘
-
-UNIQUE CONSTRAINT: (user_id, project_id, role)
-  → A user can only have one specific role per project
+CREATE TABLE project_members (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT,
+    project_id INT,
+    role VARCHAR(50) NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (project_id) REFERENCES projects(id)
+);
 ```
 
 ### **SUBMISSIONS**
 ```sql
-Table: submissions
-┌───────────────────┬────────────────────────────────────┬─────────────┐
-│ Column            │ Type                               │ Constraints │
-├───────────────────┼────────────────────────────────────┼─────────────┤
-│ id                │ string                             │ PRIMARY KEY │
-│ project_id        │ string (FK → projects.id)         │ NOT NULL    │
-│ project_name      │ string                             │ NOT NULL    │
-│ developer_id      │ string (FK → users.id)            │ NOT NULL    │
-│ developer_name    │ string                             │ NOT NULL    │
-│ code              │ text                               │ NULLABLE    │
-│                   │ (stores pasted code text)          │ (either code│
-│ description       │ text                               │  OR files)  │
-│ submitted_date    │ datetime                           │ NOT NULL    │
-│ status            │ enum('submitted', 'lead-review',   │ NOT NULL    │
-│                   │      'ai-testing', 'user-review',  │             │
-│                   │      'approved', 'rejected')       │             │
-│ assigned_to       │ string[] (user IDs)                │             │
-│ lead_comments     │ text                               │             │
-│ reviewer_comments │ text                               │             │
-│ ai_test_results   │ JSON (see AI Test Results below)   │             │
-│ files             │ JSON [{name, path}]                │ NULLABLE    │
-│                   │ (stores file PATHS, not content)   │ (either code│
-│                   │ (for accessing during AI testing)  │  OR files)  │
-└───────────────────┴────────────────────────────────────┴─────────────┘
-
-IMPORTANT: Code submission types (mutually exclusive):
-  - Text submission: code field populated, files = null/empty
-  - File attachment: files[] populated with paths, code = null/empty
-  - File paths point to server storage for AI testing access
+CREATE TABLE submissions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    project_id INT,
+    developer_id INT,
+    code TEXT,
+    description TEXT,
+    submitted_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(50),
+    FOREIGN KEY (project_id) REFERENCES projects(id),
+    FOREIGN KEY (developer_id) REFERENCES users(id)
+);
 ```
 
 ### **MANUAL_TESTS**
 ```sql
-Table: manual_tests
-┌───────────────┬────────────────────────────────────┬─────────────┐
-│ Column        │ Type                               │ Constraints │
-├───────────────┼────────────────────────────────────┼─────────────┤
-│ id            │ string                             │ PRIMARY KEY │
-│ submission_id │ string (FK → submissions.id)      │ NOT NULL    │
-│ name          │ string                             │ NOT NULL    │
-│ status        │ enum('passed','failed','pending')  │ NOT NULL    │
-│ description   │ text                               │             │
-└───────────────┴────────────────────────────────────┴─────────────┘
+CREATE TABLE manual_tests (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    submission_id INT,
+    name VARCHAR(255) NOT NULL,
+    status VARCHAR(50),
+    description TEXT,
+    FOREIGN KEY (submission_id) REFERENCES submissions(id)
+);
 ```
 
 ---

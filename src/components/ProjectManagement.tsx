@@ -47,18 +47,22 @@ export function ProjectManagement({
 
   const handleCreateProject = async (data: { name: string; description: string }) => {
     try {
-      console.log('Creating project:', data); // Debug log
+      console.log('Creating project:', data);
       const response = await projectsApi.create({
         name: data.name,
-        description: data.description
+        description: data.description,
+        creator_id: currentUser.id  // Add creator_id from currentUser prop
       });
-      console.log('Project creation response:', response); // Debug log
+      console.log('Project creation response:', response);
       
       if (response.data.success) {
         toast.success('Project created successfully');
+        setIsCreateDialogOpen(false);
+        setNewProjectName('');
+        setNewProjectDescription('');
         // Refresh projects list
         const updatedProjects = await projectsApi.getAll();
-        setProjects(updatedProjects.data);
+        onCreateProject(updatedProjects.data);
       }
     } catch (error) {
       console.error('Failed to create project:', error);

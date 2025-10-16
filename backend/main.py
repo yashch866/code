@@ -63,7 +63,7 @@ async def register(request: Request):
     try:
         data = await request.json()
         username = data.get('username')
-        password = data.get('password')  # Plain text password
+        password = data.get('password')
         name = data.get('name')
         email = data.get('email')
 
@@ -81,20 +81,21 @@ async def register(request: Request):
             if cursor.fetchone():
                 raise HTTPException(status_code=400, detail="Email already exists")
 
-            # Insert new user with plain text password
-            user_id = str(uuid.uuid4())
+            # Insert new user with auto-incrementing ID
             cursor.execute(
-                "INSERT INTO users (id, username, password, name, email) VALUES (%s, %s, %s, %s, %s)",
-                (user_id, username, password, name, email)
+                "INSERT INTO users (username, password, name, email) VALUES (%s, %s, %s, %s)",
+                (username, password, name, email)
             )
+            # Get the auto-generated ID
+            user_id = cursor.lastrowid
             conn.commit()
-            print(f"User registered successfully: {username}")  # Added debug print
+            print(f"User registered successfully: {username}")
             return {"message": "User registered successfully", "userId": user_id}
 
     except HTTPException as he:
         raise he
     except Exception as e:
-        print(f"Registration error: {str(e)}")  # Added debug print
+        print(f"Registration error: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
 # Project endpoints
@@ -121,17 +122,31 @@ async def get_projects(user_id: str = None, db = Depends(get_db)):
 async def create_project(request: Request):
     try:
         data = await request.json()
-        project_id = str(uuid.uuid4())
+        creator_id = data.get('creator_id')
+        
+        if not creator_id:
+            raise HTTPException(status_code=400, detail="Creator ID is required")
+            
         print(f"Creating project with data: {data}")  # Debug log
         
         with get_db() as (conn, cursor):
+            # Create the project with auto-incrementing ID
             cursor.execute("""
-                INSERT INTO projects (id, name, description)
+                INSERT INTO projects (name, description, creator_id)
                 VALUES (%s, %s, %s)
-                RETURNING id
-            """, (project_id, data['name'], data.get('description', '')))
+            """, (data['name'], data.get('description', ''), creator_id))
+            
+            # Get the auto-generated project ID
+            project_id = cursor.lastrowid
+            
+            # Add creator as lead in project_members
+            cursor.execute("""
+                INSERT INTO project_members (user_id, project_id, role)
+                VALUES (%s, %s, 'lead')
+            """, (creator_id, project_id))
+            
             conn.commit()
-            print(f"Project created with ID: {project_id}")  # Debug log
+            print(f"Project created with ID: {project_id} and creator {creator_id} added as lead")  # Debug log
             return {"success": True, "project_id": project_id}
             
     except Exception as e:
@@ -165,13 +180,13 @@ async def create_submission(
         if not developer:
             raise HTTPException(status_code=404, detail="Developer not found")
         
-        # Insert submission
+        # Insert submission with auto-incrementing ID
         cursor.execute("""
             INSERT INTO submissions (
-                id, project_id, project_name, developer_id, developer_name,
+                project_id, project_name, developer_id, developer_name,
                 code, description, submitted_date, status, files, ai_test_results
             ) VALUES (
-                UUID(), %s, %s, %s, %s, %s, %s, NOW(), 'submitted', %s, %s
+                %s, %s, %s, %s, %s, %s, NOW(), 'submitted', %s, %s)
         """, (
             project_id,
             project[0],
@@ -189,8 +204,8 @@ async def create_submission(
         if manual_tests:
             for test in manual_tests:
                 cursor.execute("""
-                    INSERT INTO manual_tests (id, submission_id, name, status, description)
-                    VALUES (UUID(), %s, %s, %s, %s)
+                    INSERT INTO manual_tests (submission_id, name, status, description)
+                    VALUES (%s, %s, %s, %s)
                 """, (submission_id, test["name"], test["status"], test.get("description")))
         
         db.commit()
