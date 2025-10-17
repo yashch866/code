@@ -9,7 +9,9 @@ db_config = {
     "host": "localhost",
     "user": "codeuser",
     "password": "code123",
-    "database": "code_submission_db"
+    "database": "code_submission_db",
+    "raise_on_warnings": True,
+    "connection_timeout": 5
 }
 
 @contextmanager
@@ -19,6 +21,8 @@ def get_db():
     cursor = None
     try:
         conn = connect(**db_config)
+        if not conn.is_connected():
+            raise Error("Failed to establish connection")
         cursor = conn.cursor(dictionary=True, buffered=True)
         yield conn, cursor
     except Error as e:
@@ -35,7 +39,16 @@ def test_connection():
     try:
         with get_db() as (conn, cursor):
             cursor.execute("SELECT 1")
-            print("Database connection successful!")
+            result = cursor.fetchone()
+            if result:
+                print("Database connection successful!")
+                # Try to verify manual_tests table
+                try:
+                    cursor.execute("SELECT COUNT(*) FROM manual_tests")
+                    count = cursor.fetchone()
+                    print(f"Number of records in manual_tests table: {count['COUNT(*)'] if count else 0}")
+                except Error as e:
+                    print(f"Could not query manual_tests table: {e}")
             return True
     except Error as e:
         print(f"Connection failed: {e}")

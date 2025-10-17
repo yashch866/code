@@ -306,17 +306,35 @@ async def create_submission(request: Request):
                 raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
         
         with get_db() as (conn, cursor):
-            # Insert submission with only the required fields
-            # status defaults to 'pending' and submitted_date is auto-generated
-            cursor.execute("""
-                INSERT INTO submissions (project_id, developer_id, code, description, status, submitted_date)
-                VALUES (%s, %s, %s, %s, 'pending', NOW())
-            """, (data['project_id'], data['developer_id'], data['code'], data['description']))
-            
-            submission_id = cursor.lastrowid
-            conn.commit()
-            
-            return {"message": "Submission created successfully", "id": submission_id}
+            try:
+                # Start transaction
+                conn.start_transaction()
+                
+                # Insert submission
+                cursor.execute("""
+                    INSERT INTO submissions (project_id, developer_id, code, description, status, submitted_date)
+                    VALUES (%s, %s, %s, %s, 'pending', NOW())
+                """, (data['project_id'], data['developer_id'], data['code'], data['description']))
+                
+                submission_id = cursor.lastrowid
+                
+                # Insert manual tests if provided
+                if 'manual_tests' in data and data['manual_tests']:
+                    for test in data['manual_tests']:
+                        cursor.execute("""
+                            INSERT INTO manual_tests (submission_id, name, status, description)
+                            VALUES (%s, %s, %s, %s)
+                        """, (submission_id, test['name'], test['status'], test['description']))
+                
+                # Commit transaction
+                conn.commit()
+                
+                return {"message": "Submission created successfully", "id": submission_id}
+                
+            except Exception as e:
+                # Rollback on error
+                conn.rollback()
+                raise e
             
     except HTTPException as he:
         raise he
@@ -329,20 +347,89 @@ async def get_submissions(user_id: Optional[str] = None, role: Optional[str] = N
     try:
         with get_db() as (conn, cursor):
             if role == "developer":
-                cursor.execute("SELECT * FROM submissions WHERE developer_id = %s", (user_id,))
+                query = """
+                    SELECT s.*, p.name as project_name, u.name as developer_name 
+                    FROM submissions s
+                    JOIN projects p ON s.project_id = p.id
+                    JOIN users u ON s.developer_id = u.id
+                    WHERE s.developer_id = %s
+                """
+                cursor.execute(query, (user_id,))
             elif role in ["lead", "reviewer"]:
-                cursor.execute("""
-                    SELECT s.* FROM submissions s
+                query = """
+                    SELECT s.*, p.name as project_name, u.name as developer_name 
+                    FROM submissions s
+                    JOIN projects p ON s.project_id = p.id
+                    JOIN users u ON s.developer_id = u.id
                     JOIN project_members pm ON s.project_id = pm.project_id
                     WHERE pm.user_id = %s AND pm.role = %s
-                """, (user_id, role))
+                """
+                cursor.execute(query, (user_id, role))
             else:
-                cursor.execute("SELECT * FROM submissions")
+                query = """
+                    SELECT s.*, p.name as project_name, u.name as developer_name 
+                    FROM submissions s
+                    JOIN projects p ON s.project_id = p.id
+                    JOIN users u ON s.developer_id = u.id
+                """
+                cursor.execute(query)
                 
             submissions = cursor.fetchall()
-            return submissions
+            
+            # Get manual tests for each submission
+            for submission in submissions:
+                cursor.execute("""
+                    SELECT * FROM manual_tests
+                    WHERE submission_id = %s
+                """, (submission['id'],))
+                submission['manual_tests'] = [dict(test) for test in cursor.fetchall()]
+            
+            return [dict(submission) for submission in submissions]
     except Exception as e:
         print(f"Error fetching submissions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Manual Test endpoints
+@app.post("/api/manual-tests")
+async def create_manual_test(request: Request):
+    try:
+        data = await request.json()
+        required_fields = ['submission_id', 'name', 'status', 'description']
+        
+        # Validate required fields
+        for field in required_fields:
+            if field not in data:
+                raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+        
+        with get_db() as (conn, cursor):
+            cursor.execute("""
+                INSERT INTO manual_tests (submission_id, name, status, description)
+                VALUES (%s, %s, %s, %s)
+            """, (data['submission_id'], data['name'], data['status'], data['description']))
+            
+            test_id = cursor.lastrowid
+            conn.commit()
+            
+            return {"message": "Manual test created successfully", "id": test_id}
+            
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        print(f"Error creating manual test: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/submissions/{submission_id}/manual-tests")
+async def get_manual_tests(submission_id: int):
+    try:
+        with get_db() as (conn, cursor):
+            cursor.execute("""
+                SELECT * FROM manual_tests
+                WHERE submission_id = %s
+            """, (submission_id,))
+            tests = cursor.fetchall()
+            return [dict(test) for test in tests]
+    except Exception as e:
+        print(f"Error fetching manual tests: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # User endpoints
