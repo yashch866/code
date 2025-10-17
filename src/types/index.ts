@@ -39,30 +39,30 @@ export type AICodeAnalysis = {
 export type UserRole = 'developer' | 'lead' | 'reviewer';
 
 export type User = {
-  id: string;
+  id: number;  // Changed from string to number
   username: string;
   password: string;
   name: string;
   email: string;
-  companyId: string;
+  companyId?: string;  // Made optional since it's not used in current DB
 };
 
 export type ProjectMember = {
-  userId: string;
+  userId: number;  // Changed from string to number
   userName: string;
   role: UserRole;
-  assignedAt: string;
+  assignedAt?: string;  // Made optional since it's not in current DB
 };
 
 export type Project = {
-  id: string;
+  id: number;  // Changed from string to number
   name: string;
   description: string;
-  companyId: string;
-  createdBy: string;
-  createdAt: string;
+  companyId?: string;  // Made optional since it's not in current DB
+  createdBy: number;  // Changed from string to number
+  createdAt?: string;  // Made optional since it's not in current DB
   members: ProjectMember[];
-  status: 'active' | 'completed' | 'archived';
+  status?: 'active' | 'completed' | 'archived';  // Made optional since it's not in current DB
 };
 
 export type Submission = {

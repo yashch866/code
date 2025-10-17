@@ -19,10 +19,10 @@ type ProjectManagementProps = {
   projects: Project[];
   currentUser: User;
   companyUsers: User[];
-  onCreateProject: (project: Omit<Project, 'id' | 'createdAt'>) => void;
-  onAddMember: (projectId: string, userId: string, role: UserRole) => void;
-  onRemoveMember: (projectId: string, userId: string) => void;
-  onDeleteProject: (projectId: string) => void;
+  onCreateProject: (project: Omit<Project, 'id'>) => void;
+  onAddMember: (projectId: number, userId: number, role: UserRole) => void;
+  onRemoveMember: (projectId: number, userId: number) => void;
+  onDeleteProject: (projectId: number) => void;
 };
 
 export function ProjectManagement({
@@ -38,12 +38,12 @@ export function ProjectManagement({
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDescription, setNewProjectDescription] = useState('');
   
-  const [selectedProject, setSelectedProject] = useState<string | null>(null);
-  const [selectedUserId, setSelectedUserId] = useState('');
+  const [selectedProject, setSelectedProject] = useState<number | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [selectedUserName, setSelectedUserName] = useState('');
   const [selectedRole, setSelectedRole] = useState<UserRole>('developer');
-  const [openCombobox, setOpenCombobox] = useState<Record<string, boolean>>({});
-  const [recentConnections, setRecentConnections] = useState<string[]>([]);
+  const [openCombobox, setOpenCombobox] = useState<Record<number, boolean>>({});
+  const [recentConnections, setRecentConnections] = useState<number[]>([]);
 
   const handleCreateProject = async (data: { name: string; description: string }) => {
     try {
@@ -67,7 +67,7 @@ export function ProjectManagement({
     }
   };
 
-  const handleAddMember = (projectId: string) => {
+  const handleAddMember = (projectId: number) => {
     if (!projectId || !selectedUserId) {
       toast.error('Please select a user');
       return;
@@ -87,13 +87,13 @@ export function ProjectManagement({
       return newRecent;
     });
     
-    setSelectedUserId('');
+    setSelectedUserId(null);
     setSelectedUserName('');
     setOpenCombobox({ ...openCombobox, [projectId]: false });
     toast.success('Member added to project');
   };
 
-  const getAvailableUsers = (projectId: string) => {
+  const getAvailableUsers = (projectId: number) => {
     const project = projects.find(p => p.id === projectId);
     if (!project) return [];
 
@@ -104,7 +104,7 @@ export function ProjectManagement({
     );
   };
 
-  const getRecentUsers = (projectId: string) => {
+  const getRecentUsers = (projectId: number) => {
     const availableUsers = getAvailableUsers(projectId);
     return recentConnections
       .map(id => availableUsers.find(u => u.id === id))
@@ -185,6 +185,9 @@ export function ProjectManagement({
             const availableUsers = getAvailableUsers(project.id);
             const recentUsers = getRecentUsers(project.id);
             const isOpen = openCombobox[project.id] || false;
+            const isProjectLead = project.members.some(
+              m => m.userId === currentUser.id && m.role === 'lead'
+            );
             
             return (
               <Card key={project.id} className="border-2 shadow-sm hover:shadow-md transition-shadow">
@@ -197,7 +200,7 @@ export function ProjectManagement({
                       </CardDescription>
                     </div>
                     <Badge variant="outline" className="ml-2">
-                      {project.status}
+                      {project.status || 'active'}
                     </Badge>
                   </div>
                 </CardHeader>
@@ -208,7 +211,7 @@ export function ProjectManagement({
                         <Users className="size-4" />
                         Team Members ({project.members.length})
                       </h4>
-                      {project.createdBy === currentUser.id && (
+                      {isProjectLead && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -229,7 +232,7 @@ export function ProjectManagement({
                             <p className="font-medium">{member.userName}</p>
                             <p className="text-xs text-muted-foreground capitalize">{member.role}</p>
                           </div>
-                          {project.createdBy === currentUser.id && member.userId !== currentUser.id && (
+                          {isProjectLead && member.userId !== currentUser.id && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -243,7 +246,7 @@ export function ProjectManagement({
                     </div>
                   </div>
 
-                  {project.createdBy === currentUser.id && (
+                  {isProjectLead && (
                     <div className="pt-3 border-t space-y-3">
                       <h4 className="flex items-center gap-2">
                         <UserPlus className="size-4" />

@@ -23,21 +23,16 @@ export default function App() {
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
   const [currentView, setCurrentView] = useState('main');
 
-  // Add effect to fetch projects when view changes to manage-projects
+  // Add useEffect to fetch projects when needed
   React.useEffect(() => {
-    if (currentView === 'manage-projects' && currentUser) {
+    if (currentUser && (currentView === 'manage-projects' || currentView === 'main')) {
       fetchProjects();
     }
   }, [currentView, currentUser]);
 
-  // Add function to fetch projects
   const fetchProjects = async () => {
     try {
-      // If user is logged in, fetch their projects, otherwise fetch all projects
-      const response = currentUser?.id 
-        ? await projectsApi.getByUser(currentUser.id)
-        : await projectsApi.getAll();
-        
+      const response = await projectsApi.getAll();
       if (response.data) {
         setProjects(response.data);
       }
@@ -145,50 +140,66 @@ export default function App() {
     }
   };
 
-  const handleAddMember = (projectId: string, userId: string, role: UserRole) => {
-    const user = users.find(u => u.id === userId);
-    if (!user) return;
-
-    setProjects(
-      projects.map((p) => {
-        if (p.id === projectId) {
-          const newMember: ProjectMember = {
-            userId: user.id,
-            userName: user.name,
-            role,
-            assignedAt: new Date().toISOString(),
-          };
-          return {
-            ...p,
-            members: [...p.members, newMember],
-          };
-        }
-        return p;
-      })
-    );
+  const handleAddMember = async (projectId: number, userId: number, role: UserRole) => {
+    try {
+      const response = await projectsApi.addMember(projectId, userId, role);
+      if (response.data) {
+        setProjects(
+          projects.map((p) => {
+            if (p.id === projectId) {
+              return {
+                ...p,
+                members: [...p.members, response.data]
+              };
+            }
+            return p;
+          })
+        );
+        toast.success('Member added to project');
+      }
+    } catch (error) {
+      console.error('Error adding member:', error);
+      toast.error('Failed to add member');
+    }
   };
 
-  const handleRemoveMember = (projectId: string, userId: string) => {
-    setProjects(
-      projects.map((p) => {
-        if (p.id === projectId) {
-          return {
-            ...p,
-            members: p.members.filter((m) => m.userId !== userId),
-          };
-        }
-        return p;
-      })
-    );
-    toast.success('Member removed from project');
+  const handleRemoveMember = async (projectId: number, userId: number) => {
+    try {
+      const response = await projectsApi.removeMember(projectId, userId);
+      if (response.data.success) {
+        setProjects(
+          projects.map((p) => {
+            if (p.id === projectId) {
+              return {
+                ...p,
+                members: p.members.filter((m) => m.userId !== userId)
+              };
+            }
+            return p;
+          })
+        );
+        toast.success('Member removed from project');
+      }
+    } catch (error) {
+      console.error('Error removing member:', error);
+      toast.error('Failed to remove member');
+    }
   };
 
-  const handleDeleteProject = (projectId: string) => {
+  const handleDeleteProject = async (projectId: number) => {
     if (window.confirm('Are you sure you want to delete this project?')) {
-      setProjects(projects.filter((p) => p.id !== projectId));
-      // Also remove submissions for this project
-      setSubmissions(submissions.filter((s) => s.projectId !== projectId));
-      toast.success('Project deleted');
+      try {
+        const response = await projectsApi.deleteProject(projectId);
+        if (response.data.success) {
+          setProjects(projects.filter((p) => p.id !== projectId));
+          // Also remove submissions for this project
+          setSubmissions(submissions.filter((s) => parseInt(s.projectId) !== projectId));
+          toast.success('Project deleted');
+        }
+      } catch (error) {
+        console.error('Error deleting project:', error);
+        toast.error('Failed to delete project');
+      }
     }
   };
 
@@ -249,13 +260,6 @@ export default function App() {
   const handleBackFromDetail = () => {
     setSelectedSubmission(null);
   };
-
-  // Add effect to fetch projects when view changes
-  React.useEffect(() => {
-    if (currentView === 'manage-projects') {
-      fetchProjects();
-    }
-  }, [currentView]);
 
   // Show login screen if not authenticated
   if (!currentUser) {

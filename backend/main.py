@@ -42,40 +42,31 @@ async def login(request: Request):
         username = data.get('username')
         password = data.get('password')
 
-        print(f"Login attempt - username: {username}, password: {password}")  # Debug log
-
         if not username or not password:
             raise HTTPException(status_code=400, detail="Username and password are required")
 
         with get_db() as (conn, cursor):
-            # Debug query
-            cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
-            user = cursor.fetchone()
-            print(f"Found user: {user}")  # Debug log
-            
-            if user:
-                # Now check password
-                cursor.execute(
-                    "SELECT * FROM users WHERE username = %s AND password = %s",
-                    (username, password)
-                )
-                user = cursor.fetchone()
-                
-                if user:
-                    print(f"Login successful for: {username}")
-                    return {
-                        "user": {
-                            "id": str(user['id']),
-                            "username": user['username'],
-                            "name": user['name'],
-                            "email": user['email']
-                        }
-                    }
-            
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid username or password"
+            cursor.execute(
+                "SELECT * FROM users WHERE username = %s AND password = %s",
+                (username, password)
             )
+            user = cursor.fetchone()
+            
+            if not user:
+                raise HTTPException(
+                    status_code=401,
+                    detail="Invalid username or password"
+                )
+            
+            print(f"Login successful for: {username}")
+            return {
+                "user": {
+                    "id": int(user['id']),  # Convert to number instead of string
+                    "username": user['username'],
+                    "name": user['name'],
+                    "email": user['email']
+                }
+            }
             
     except HTTPException as he:
         raise he
@@ -130,40 +121,41 @@ async def get_projects(user_id: str = None):
         with get_db() as (conn, cursor):
             if user_id:
                 cursor.execute("""
-                    SELECT p.*, pm.user_id, pm.role, u.name as user_name
+                    SELECT p.*, pm.role
                     FROM projects p
-                    JOIN project_members pm ON p.id = pm.project_id
-                    JOIN users u ON pm.user_id = u.id
-                    WHERE pm.user_id = %s
-                """, (user_id,))
+                    LEFT JOIN project_members pm ON p.id = pm.project_id AND pm.user_id = %s
+                    WHERE p.creator_id = %s OR pm.user_id = %s
+                """, (user_id, user_id, user_id))
             else:
-                cursor.execute("""
-                    SELECT p.*, pm.user_id, pm.role, u.name as user_name
-                    FROM projects p
-                    LEFT JOIN project_members pm ON p.id = pm.project_id
-                    LEFT JOIN users u ON pm.user_id = u.id
-                """)
+                cursor.execute("SELECT * FROM projects")
             
-            # Get all projects
             projects = {}
             for row in cursor.fetchall():
                 project_id = row['id']
                 if project_id not in projects:
                     projects[project_id] = {
-                        'id': str(project_id),
+                        'id': project_id,  # Keep as number
                         'name': row['name'],
                         'description': row['description'],
-                        'createdBy': row['creator_id'],
+                        'createdBy': int(row['creator_id']),  # Convert to number
                         'members': []
                     }
-                
-                # Add member if it exists
-                if row['user_id']:
-                    projects[project_id]['members'].append({
-                        'userId': row['user_id'],
-                        'userName': row['user_name'],
-                        'role': row['role']
-                    })
+                    
+                    # Fetch members for this project
+                    cursor.execute("""
+                        SELECT pm.user_id, u.name, pm.role
+                        FROM project_members pm
+                        JOIN users u ON pm.user_id = u.id
+                        WHERE pm.project_id = %s
+                    """, (project_id,))
+                    
+                    members = cursor.fetchall()
+                    for member in members:
+                        projects[project_id]['members'].append({
+                            'userId': int(member['user_id']),  # Convert to number
+                            'userName': member['name'],
+                            'role': member['role']
+                        })
             
             return list(projects.values())
     except Exception as e:
@@ -179,16 +171,15 @@ async def create_project(request: Request):
         if not creator_id:
             raise HTTPException(status_code=400, detail="Creator ID is required")
             
-        print(f"Creating project with data: {data}")  # Debug log
+        print(f"Creating project with data: {data}")
         
         with get_db() as (conn, cursor):
-            # Create the project with existing columns
+            # Create project
             cursor.execute("""
                 INSERT INTO projects (name, description, creator_id)
                 VALUES (%s, %s, %s)
             """, (data['name'], data.get('description', ''), creator_id))
             
-            # Get the auto-generated project ID
             project_id = cursor.lastrowid
             
             # Add creator as lead in project_members
@@ -199,35 +190,97 @@ async def create_project(request: Request):
             
             conn.commit()
             
-            # Fetch the created project
+            # Fetch the created project with member info
             cursor.execute("""
-                SELECT p.*, pm.user_id, pm.role, u.name as user_name
+                SELECT p.*, u.name as user_name
                 FROM projects p
-                JOIN project_members pm ON p.id = pm.project_id
-                JOIN users u ON pm.user_id = u.id
+                JOIN users u ON u.id = p.creator_id
                 WHERE p.id = %s
             """, (project_id,))
             
-            row = cursor.fetchone()
+            project = cursor.fetchone()
             
-            # Format project response with only existing fields
-            project = {
+            response = {
                 'id': str(project_id),
-                'name': row['name'],
-                'description': row['description'],
-                'createdBy': row['creator_id'],
+                'name': project['name'],
+                'description': project['description'],
+                'createdBy': project['creator_id'],
                 'members': [{
-                    'userId': row['user_id'],
-                    'userName': row['user_name'],
-                    'role': row['role']
+                    'userId': creator_id,
+                    'userName': project['user_name'],
+                    'role': 'lead'
                 }]
             }
             
-            print(f"Project created with ID: {project_id} and creator {creator_id} added as lead")
-            return {"success": True, "project": project}
+            return {"success": True, "project": response}
             
     except Exception as e:
         print(f"Error creating project: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/projects/members")
+async def add_project_member(request: Request):
+    try:
+        data = await request.json()
+        project_id = int(data.get('project_id'))
+        user_id = int(data.get('user_id'))
+        role = data.get('role')
+        
+        with get_db() as (conn, cursor):
+            # Add member to project
+            cursor.execute("""
+                INSERT INTO project_members (project_id, user_id, role)
+                VALUES (%s, %s, %s)
+            """, (project_id, user_id, role))
+            
+            conn.commit()
+            
+            # Fetch updated member info
+            cursor.execute("""
+                SELECT pm.user_id, u.name, pm.role
+                FROM project_members pm
+                JOIN users u ON pm.user_id = u.id
+                WHERE pm.project_id = %s AND pm.user_id = %s
+            """, (project_id, user_id))
+            
+            member = cursor.fetchone()
+            return {
+                'userId': member['user_id'],
+                'userName': member['name'],
+                'role': member['role']
+            }
+    except Exception as e:
+        print(f"Error adding member: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/projects/{project_id}/members/{user_id}")
+async def remove_project_member(project_id: int, user_id: int):
+    try:
+        with get_db() as (conn, cursor):
+            cursor.execute("""
+                DELETE FROM project_members 
+                WHERE project_id = %s AND user_id = %s
+            """, (project_id, user_id))
+            conn.commit()
+            return {"success": True}
+    except Exception as e:
+        print(f"Error removing member: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/projects/{project_id}")
+async def delete_project(project_id: int):
+    try:
+        with get_db() as (conn, cursor):
+            # First delete project members
+            cursor.execute("DELETE FROM project_members WHERE project_id = %s", (project_id,))
+            
+            # Then delete the project
+            cursor.execute("DELETE FROM projects WHERE id = %s", (project_id,))
+            
+            conn.commit()
+            return {"success": True}
+    except Exception as e:
+        print(f"Error deleting project: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Submission endpoints

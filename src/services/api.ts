@@ -28,7 +28,7 @@ export const authApi = {
 
 export const projectsApi = {
   getAll: () => api.get('/projects'),
-  getByUser: (userId: string) => api.get(`/projects?user_id=${userId}`),
+  getByUser: (userId: number) => api.get(`/projects?user_id=${userId}`),
   create: async (projectData: any) => {
     try {
       console.log('Creating project with data:', projectData);
@@ -43,7 +43,13 @@ export const projectsApi = {
       console.error('Error creating project:', error);
       throw error;
     }
-  }
+  },
+  addMember: (projectId: number, userId: number, role: string) => 
+    api.post('/api/projects/members', { project_id: projectId, user_id: userId, role }),
+  removeMember: (projectId: number, userId: number) => 
+    api.delete(`/api/projects/${projectId}/members/${userId}`),
+  deleteProject: (projectId: number) =>
+    api.delete(`/api/projects/${projectId}`)
 };
 
 export const submissionsApi = {
