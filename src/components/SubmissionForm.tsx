@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -12,9 +12,10 @@ import { Alert, AlertDescription } from './ui/alert';
 import { Separator } from './ui/separator';
 import { Progress } from './ui/progress';
 import { runAITests, generateCodeAnalysis } from '../tests/mocks/ai-test-generator';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { cn } from './ui/utils';
+import { ManualTestDialog } from './ManualTestDialog';
 
 type SubmissionFormProps = {
   projects: Project[];
@@ -31,6 +32,8 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
   const [submissionType, setSubmissionType] = useState<'code' | 'attachments'>('code');
   const [files, setFiles] = useState<FileAttachment[]>([]);
   const [manualTests, setManualTests] = useState<ManualTest[]>([]);
+  const [testDialogOpen, setTestDialogOpen] = useState(false);
+  const [editingTest, setEditingTest] = useState<ManualTest | null>(null);
   const [isRunningAITests, setIsRunningAITests] = useState(false);
   const [aiTestResults, setAITestResults] = useState<Submission['aiTestResults'] | null>(null);
   const [aiCodeAnalysis, setAICodeAnalysis] = useState<AICodeAnalysis | null>(null);
@@ -39,17 +42,25 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
     const selectedFiles = e.target.files;
     if (!selectedFiles) return;
 
-    Array.from(selectedFiles).forEach((file) => {
+    Array.from(selectedFiles).forEach((selectedFile: unknown) => {
+      // Type guard to ensure we have a File object
+      if (!(selectedFile instanceof File)) return;
+      
+      const file = selectedFile as File;
       const reader = new FileReader();
-      reader.onload = (event) => {
+      
+      reader.onload = (event: ProgressEvent<FileReader>) => {
+        if (!event.target?.result) return;
+        
         const fileData: FileAttachment = {
           name: file.name,
           size: file.size,
           type: file.type,
-          content: event.target?.result as string,
+          content: event.target.result.toString(),
         };
         setFiles((prev) => [...prev, fileData]);
       };
+      
       reader.readAsDataURL(file);
     });
     
@@ -67,30 +78,20 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
-  const addTest = () => {
-    const newTest: ManualTest = {
-      id: Date.now().toString(),
-      name: '',
-      description: '',
-      status: 'passed',
-      executedAt: new Date().toISOString(),
-    };
-    setManualTests([...manualTests, newTest]);
+  const handleTestSubmit = (test: ManualTest) => {
+    if (editingTest) {
+      setManualTests(prev => prev.map(t => t.id === test.id ? test : t));
+      setEditingTest(null);
+    } else {
+      setManualTests(prev => [...prev, test]);
+    }
   };
 
   const removeTest = (id: string) => {
-    setManualTests(manualTests.filter((test) => test.id !== id));
+    setManualTests(prev => prev.filter(test => test.id !== id));
   };
 
-  const updateTest = (id: string, field: keyof ManualTest, value: string) => {
-    setManualTests(
-      manualTests.map((test) =>
-        test.id === id ? { ...test, [field]: value } : test
-      )
-    );
-  };
-
-  const handleRunAITests = () => {
+  const handleRunAITests = async () => {
     if (submissionType === 'code' && !formData.code) {
       toast.error('Please add code before running AI tests');
       return;
@@ -106,19 +107,24 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
       description: 'AI is generating and executing comprehensive test cases...',
     });
 
-    setTimeout(() => {
-      const codeToTest = submissionType === 'code' ? formData.code : 'File attachments submitted';
-      const testResults = runAITests(codeToTest);
-      const codeAnalysis = generateCodeAnalysis(codeToTest);
+    try {
+      const codeToTest = submissionType === 'code' ? formData.code : files.map(f => f.content).join('\n');
+      const testResults = await runAITests(codeToTest);
+      const codeAnalysis = await generateCodeAnalysis(codeToTest);
 
       setAITestResults(testResults);
       setAICodeAnalysis(codeAnalysis);
-      setIsRunningAITests(false);
 
       toast.success('AI automated tests completed!', {
         description: `${testResults.passed}/${testResults.total} tests passed. Review the results below.`,
       });
-    }, 3000);
+    } catch (error) {
+      toast.error('Failed to run AI tests', {
+        description: error instanceof Error ? error.message : 'An unexpected error occurred',
+      });
+    } finally {
+      setIsRunningAITests(false);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -126,6 +132,12 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
     
     if (!formData.projectId) {
       toast.error('Please select a project');
+      return;
+    }
+
+    const selectedProject = projects.find(p => p.id === Number(formData.projectId));
+    if (!selectedProject) {
+      toast.error('Invalid project selected');
       return;
     }
 
@@ -155,9 +167,6 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
       return;
     }
 
-    const selectedProject = projects.find(p => p.id === formData.projectId);
-    if (!selectedProject) return;
-
     const submission = {
       projectId: formData.projectId,
       projectName: selectedProject.name,
@@ -165,9 +174,9 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
       description: formData.description,
       code: submissionType === 'code' ? formData.code : undefined,
       files: submissionType === 'attachments' ? files : undefined,
-      manualTests: manualTests,
-      aiTestResults: aiTestResults || undefined,
-      aiCodeAnalysis: aiCodeAnalysis || undefined,
+      manualTests,
+      aiTestResults,
+      aiCodeAnalysis,
     };
 
     onSubmit(submission);
@@ -183,11 +192,12 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
     setAITestResults(null);
     setAICodeAnalysis(null);
     setSubmissionType('code');
+    
+    toast.success('Submission created successfully!');
   };
 
   return (
     <div className="space-y-6">
-      {/* Code Submission Form */}
       <Card className="border-2 shadow-sm">
         <CardHeader>
           <CardTitle>Submit Code for Review</CardTitle>
@@ -200,15 +210,15 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
             <div className="space-y-2">
               <Label htmlFor="projectId">Select Project</Label>
               <Select
-                value={formData.projectId}
-                onValueChange={(value) => setFormData({ ...formData, projectId: value })}
+                value={formData.projectId.toString()}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, projectId: value }))}
               >
                 <SelectTrigger id="projectId">
                   <SelectValue placeholder="Choose a project" />
                 </SelectTrigger>
                 <SelectContent>
                   {projects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
+                    <SelectItem key={project.id} value={project.id.toString()}>
                       {project.name}
                     </SelectItem>
                   ))}
@@ -387,7 +397,16 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <Label>Manual Tests</Label>
-                <Button type="button" variant="outline" size="sm" onClick={addTest} className="gap-2">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => {
+                    setEditingTest(null);
+                    setTestDialogOpen(true);
+                  }} 
+                  className="gap-2"
+                >
                   <Plus className="size-4" />
                   Add Test
                 </Button>
@@ -405,28 +424,20 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
                       <div className="flex items-center justify-between">
                         <span>Test #{index + 1}</span>
                         <div className="flex items-center gap-2">
-                          <Select
-                            value={test.status}
-                            onValueChange={(value) => updateTest(test.id, 'status', value)}
+                          <Badge variant={test.status === 'passed' ? 'default' : 'destructive'}>
+                            {test.status.toUpperCase()}
+                          </Badge>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setEditingTest(test);
+                              setTestDialogOpen(true);
+                            }}
                           >
-                            <SelectTrigger className="w-32">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="passed">
-                                <div className="flex items-center gap-2">
-                                  <CheckCircle className="size-4 text-green-600" />
-                                  Passed
-                                </div>
-                              </SelectItem>
-                              <SelectItem value="failed">
-                                <div className="flex items-center gap-2">
-                                  <XCircle className="size-4 text-red-600" />
-                                  Failed
-                                </div>
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
+                            Edit
+                          </Button>
                           <Button
                             type="button"
                             variant="ghost"
@@ -438,23 +449,9 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
                         </div>
                       </div>
 
-                      <div className="space-y-2">
-                        <Input
-                          value={test.name}
-                          onChange={(e) => updateTest(test.id, 'name', e.target.value)}
-                          placeholder="Test name (e.g., Login with valid credentials)"
-                          required
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Textarea
-                          value={test.description}
-                          onChange={(e) => updateTest(test.id, 'description', e.target.value)}
-                          placeholder="Test description (e.g., User should be able to login with correct username and password)"
-                          rows={2}
-                          required
-                        />
+                      <div>
+                        <h4 className="font-medium">{test.name}</h4>
+                        <p className="text-sm text-muted-foreground mt-1">{test.description}</p>
                       </div>
                     </div>
                   ))}
@@ -619,6 +616,13 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
           </form>
         </CardContent>
       </Card>
+
+      <ManualTestDialog
+        open={testDialogOpen}
+        onOpenChange={setTestDialogOpen}
+        onSubmit={handleTestSubmit}
+        editTest={editingTest}
+      />
     </div>
   );
 }

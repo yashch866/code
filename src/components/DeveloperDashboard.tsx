@@ -29,12 +29,13 @@ export function DeveloperDashboard({
 }: DeveloperDashboardProps) {
   // Filter submissions where current user is the developer
   const mySubmissions = submissions.filter(
-    (sub) => sub.developerId === currentUser.id
+    (sub) => Number(sub.developerId) === currentUser.id
   );
 
   // Get projects where user is a developer
   const developerProjects = projects.filter(p => 
-    p.members.some(m => m.userId === currentUser.id && m.role === 'developer')
+    p.members.some(m => m.userId === currentUser.id && 
+    (m.role === 'developer' || m.role === 'lead'))
   );
 
   return (
