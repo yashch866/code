@@ -45,11 +45,11 @@ export const projectsApi = {
     }
   },
   addMember: (projectId: number, userId: number, role: string) => 
-    api.post('/api/projects/members', { project_id: projectId, user_id: userId, role }),
+    api.post('/projects/members', { project_id: projectId, user_id: userId, role }),
   removeMember: (projectId: number, userId: number) => 
-    api.delete(`/api/projects/${projectId}/members/${userId}`),
+    api.delete(`/projects/${projectId}/members/${userId}`),
   deleteProject: (projectId: number) =>
-    api.delete(`/api/projects/${projectId}`)
+    api.delete(`/projects/${projectId}`)
 };
 
 export const submissionsApi = {
