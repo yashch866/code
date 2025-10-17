@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
@@ -9,7 +9,7 @@ import { Alert, AlertDescription } from './ui/alert';
 
 type LoginScreenProps = {
   onLogin: (username: string, password: string) => Promise<boolean>;
-  onSignUp: (username: string, password: string, name: string, email: string) => boolean;
+  onSignUp: (username: string, password: string, name: string, email: string) => Promise<boolean>;
 };
 
 export function LoginScreen({ onLogin, onSignUp }: LoginScreenProps) {
@@ -50,7 +50,7 @@ export function LoginScreen({ onLogin, onSignUp }: LoginScreenProps) {
     }
   };
 
-  const handleSignUp = (e: React.FormEvent) => {
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setSignUpError('');
     setSignUpSuccess('');
@@ -73,22 +73,26 @@ export function LoginScreen({ onLogin, onSignUp }: LoginScreenProps) {
       return;
     }
 
-    const success = onSignUp(
-      signUpUsername.trim(),
-      signUpPassword,
-      signUpName.trim(),
-      signUpEmail.trim()
-    );
+    try {
+      const success = await onSignUp(
+        signUpUsername.trim(),
+        signUpPassword,
+        signUpName.trim(),
+        signUpEmail.trim()
+      );
 
-    if (!success) {
-      setSignUpError('Username already exists. Please choose a different username.');
+      if (success) {
+        setSignUpSuccess('Account created successfully! You can now log in.');
+        setSignUpUsername('');
+        setSignUpPassword('');
+        setSignUpName('');
+        setSignUpEmail('');
+      } else {
+        setSignUpError('Failed to create account. Please try again.');
+      }
+    } catch (error: any) {
+      setSignUpError(error?.response?.data?.detail || 'Failed to create account');
       setSignUpUsername('');
-    } else {
-      setSignUpSuccess('Account created successfully! You can now log in.');
-      setSignUpUsername('');
-      setSignUpPassword('');
-      setSignUpName('');
-      setSignUpEmail('');
     }
   };
 

@@ -36,24 +36,49 @@ async def health_check():
 
 # Auth endpoints
 @app.post("/api/auth/login")
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+async def login(request: Request):
     try:
+        data = await request.json()
+        username = data.get('username')
+        password = data.get('password')
+
+        print(f"Login attempt - username: {username}, password: {password}")  # Debug log
+
+        if not username or not password:
+            raise HTTPException(status_code=400, detail="Username and password are required")
+
         with get_db() as (conn, cursor):
-            cursor.execute(
-                "SELECT id, username, name, email FROM users WHERE username = %s AND password = %s",
-                (form_data.username, form_data.password)
-            )
+            # Debug query
+            cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
             user = cursor.fetchone()
+            print(f"Found user: {user}")  # Debug log
             
-            if not user:
-                raise HTTPException(
-                    status_code=401,
-                    detail="Invalid username or password"
+            if user:
+                # Now check password
+                cursor.execute(
+                    "SELECT * FROM users WHERE username = %s AND password = %s",
+                    (username, password)
                 )
+                user = cursor.fetchone()
+                
+                if user:
+                    print(f"Login successful for: {username}")
+                    return {
+                        "user": {
+                            "id": str(user['id']),
+                            "username": user['username'],
+                            "name": user['name'],
+                            "email": user['email']
+                        }
+                    }
             
-            print(f"Login successful for: {form_data.username}")
-            return {"user": user}
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid username or password"
+            )
             
+    except HTTPException as he:
+        raise he
     except Exception as e:
         print(f"Login error: {str(e)}")
         raise HTTPException(status_code=401, detail="Invalid username or password")
@@ -100,22 +125,49 @@ async def register(request: Request):
 
 # Project endpoints
 @app.get("/api/projects")
-async def get_projects(user_id: str = None, db = Depends(get_db)):
+async def get_projects(user_id: str = None):
     try:
-        cursor = db.cursor(dictionary=True)
-        if user_id:
-            cursor.execute("""
-                SELECT p.*, pm.role 
-                FROM projects p
-                JOIN project_members pm ON p.id = pm.project_id
-                WHERE pm.user_id = %s
-            """, (user_id,))
-        else:
-            cursor.execute("SELECT * FROM projects")
-        projects = cursor.fetchall()
-        cursor.close()
-        return projects
+        with get_db() as (conn, cursor):
+            if user_id:
+                cursor.execute("""
+                    SELECT p.*, pm.user_id, pm.role, u.name as user_name
+                    FROM projects p
+                    JOIN project_members pm ON p.id = pm.project_id
+                    JOIN users u ON pm.user_id = u.id
+                    WHERE pm.user_id = %s
+                """, (user_id,))
+            else:
+                cursor.execute("""
+                    SELECT p.*, pm.user_id, pm.role, u.name as user_name
+                    FROM projects p
+                    LEFT JOIN project_members pm ON p.id = pm.project_id
+                    LEFT JOIN users u ON pm.user_id = u.id
+                """)
+            
+            # Get all projects
+            projects = {}
+            for row in cursor.fetchall():
+                project_id = row['id']
+                if project_id not in projects:
+                    projects[project_id] = {
+                        'id': str(project_id),
+                        'name': row['name'],
+                        'description': row['description'],
+                        'createdBy': row['creator_id'],
+                        'members': []
+                    }
+                
+                # Add member if it exists
+                if row['user_id']:
+                    projects[project_id]['members'].append({
+                        'userId': row['user_id'],
+                        'userName': row['user_name'],
+                        'role': row['role']
+                    })
+            
+            return list(projects.values())
     except Exception as e:
+        print(f"Error fetching projects: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/projects")
@@ -130,7 +182,7 @@ async def create_project(request: Request):
         print(f"Creating project with data: {data}")  # Debug log
         
         with get_db() as (conn, cursor):
-            # Create the project with auto-incrementing ID
+            # Create the project with existing columns
             cursor.execute("""
                 INSERT INTO projects (name, description, creator_id)
                 VALUES (%s, %s, %s)
@@ -141,16 +193,41 @@ async def create_project(request: Request):
             
             # Add creator as lead in project_members
             cursor.execute("""
-                INSERT INTO project_members (user_id, project_id, role)
+                INSERT INTO project_members (project_id, user_id, role)
                 VALUES (%s, %s, 'lead')
-            """, (creator_id, project_id))
+            """, (project_id, creator_id))
             
             conn.commit()
-            print(f"Project created with ID: {project_id} and creator {creator_id} added as lead")  # Debug log
-            return {"success": True, "project_id": project_id}
+            
+            # Fetch the created project
+            cursor.execute("""
+                SELECT p.*, pm.user_id, pm.role, u.name as user_name
+                FROM projects p
+                JOIN project_members pm ON p.id = pm.project_id
+                JOIN users u ON pm.user_id = u.id
+                WHERE p.id = %s
+            """, (project_id,))
+            
+            row = cursor.fetchone()
+            
+            # Format project response with only existing fields
+            project = {
+                'id': str(project_id),
+                'name': row['name'],
+                'description': row['description'],
+                'createdBy': row['creator_id'],
+                'members': [{
+                    'userId': row['user_id'],
+                    'userName': row['user_name'],
+                    'role': row['role']
+                }]
+            }
+            
+            print(f"Project created with ID: {project_id} and creator {creator_id} added as lead")
+            return {"success": True, "project": project}
             
     except Exception as e:
-        print(f"Error creating project: {e}")  # Debug log
+        print(f"Error creating project: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Submission endpoints
@@ -162,83 +239,75 @@ async def create_submission(
     description: str = None,
     files: Optional[List[Dict[str, str]]] = None,
     manual_tests: Optional[List[Dict]] = None,
-    ai_test_results: Optional[Dict] = None,
-    db = Depends(get_db)
+    ai_test_results: Optional[Dict] = None
 ):
     try:
-        cursor = db.cursor()
-        
-        # Get project name
-        cursor.execute("SELECT name FROM projects WHERE id = %s", (project_id,))
-        project = cursor.fetchone()
-        if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
-        
-        # Get developer name
-        cursor.execute("SELECT name FROM users WHERE id = %s", (developer_id,))
-        developer = cursor.fetchone()
-        if not developer:
-            raise HTTPException(status_code=404, detail="Developer not found")
-        
-        # Insert submission with auto-incrementing ID
-        cursor.execute("""
-            INSERT INTO submissions (
-                project_id, project_name, developer_id, developer_name,
-                code, description, submitted_date, status, files, ai_test_results
-            ) VALUES (
-                %s, %s, %s, %s, %s, %s, NOW(), 'submitted', %s, %s)
-        """, (
-            project_id,
-            project[0],
-            developer_id,
-            developer[0],
-            code,
-            description,
-            json.dumps(files) if files else None,
-            json.dumps(ai_test_results) if ai_test_results else None
-        ))
-        
-        submission_id = cursor.lastrowid
-        
-        # Insert manual tests if provided
-        if manual_tests:
-            for test in manual_tests:
-                cursor.execute("""
-                    INSERT INTO manual_tests (submission_id, name, status, description)
-                    VALUES (%s, %s, %s, %s)
-                """, (submission_id, test["name"], test["status"], test.get("description")))
-        
-        db.commit()
-        cursor.close()
-        return {"message": "Submission created successfully", "id": submission_id}
+        with get_db() as (conn, cursor):
+            # Get project name
+            cursor.execute("SELECT name FROM projects WHERE id = %s", (project_id,))
+            project = cursor.fetchone()
+            if not project:
+                raise HTTPException(status_code=404, detail="Project not found")
+            
+            # Get developer name
+            cursor.execute("SELECT name FROM users WHERE id = %s", (developer_id,))
+            developer = cursor.fetchone()
+            if not developer:
+                raise HTTPException(status_code=404, detail="Developer not found")
+            
+            # Insert submission
+            cursor.execute("""
+                INSERT INTO submissions (
+                    project_id, project_name, developer_id, developer_name,
+                    code, description, submitted_date, status, files, ai_test_results
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, NOW(), 'submitted', %s, %s)
+            """, (
+                project_id,
+                project['name'],
+                developer_id,
+                developer['name'],
+                code,
+                description,
+                json.dumps(files) if files else None,
+                json.dumps(ai_test_results) if ai_test_results else None
+            ))
+            
+            submission_id = cursor.lastrowid
+            
+            # Insert manual tests if provided
+            if manual_tests:
+                for test in manual_tests:
+                    cursor.execute("""
+                        INSERT INTO manual_tests (submission_id, name, status, description)
+                        VALUES (%s, %s, %s, %s)
+                    """, (submission_id, test["name"], test["status"], test.get("description")))
+            
+            conn.commit()
+            return {"message": "Submission created successfully", "id": submission_id}
     except Exception as e:
-        db.rollback()
+        print(f"Error creating submission: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/api/submissions")
-async def get_submissions(
-    user_id: Optional[str] = None,
-    role: Optional[str] = None,
-    db = Depends(get_db)
-):
+async def get_submissions(user_id: Optional[str] = None, role: Optional[str] = None):
     try:
-        cursor = db.cursor(dictionary=True)
-        
-        if role == "developer":
-            cursor.execute("SELECT * FROM submissions WHERE developer_id = %s", (user_id,))
-        elif role in ["lead", "reviewer"]:
-            cursor.execute("""
-                SELECT s.* FROM submissions s
-                JOIN project_members pm ON s.project_id = pm.project_id
-                WHERE pm.user_id = %s AND pm.role = %s
-            """, (user_id, role))
-        else:
-            cursor.execute("SELECT * FROM submissions")
-            
-        submissions = cursor.fetchall()
-        cursor.close()
-        return submissions
+        with get_db() as (conn, cursor):
+            if role == "developer":
+                cursor.execute("SELECT * FROM submissions WHERE developer_id = %s", (user_id,))
+            elif role in ["lead", "reviewer"]:
+                cursor.execute("""
+                    SELECT s.* FROM submissions s
+                    JOIN project_members pm ON s.project_id = pm.project_id
+                    WHERE pm.user_id = %s AND pm.role = %s
+                """, (user_id, role))
+            else:
+                cursor.execute("SELECT * FROM submissions")
+                
+            submissions = cursor.fetchall()
+            return submissions
     except Exception as e:
+        print(f"Error fetching submissions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

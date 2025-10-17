@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { LoginScreen } from './components/LoginScreen';
 import { Navigation } from './components/Navigation';
 import { DeveloperDashboard } from './components/DeveloperDashboard';
@@ -10,7 +10,7 @@ import { ProjectManagement } from './components/ProjectManagement';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { mockSubmissions, mockCompany, mockProjects } from './data/mockData';
 import { Submission, User, Project, UserRole, ProjectMember } from './types';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { Toaster } from './components/ui/sonner';
 import { authApi, projectsApi } from './services/api';
 
@@ -18,10 +18,34 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentRole, setCurrentRole] = useState<UserRole>('developer');
   const [users, setUsers] = useState<User[]>(mockCompany.users);
-  const [projects, setProjects] = useState<Project[]>(mockProjects);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>(mockSubmissions);
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
   const [currentView, setCurrentView] = useState('main');
+
+  // Add effect to fetch projects when view changes to manage-projects
+  React.useEffect(() => {
+    if (currentView === 'manage-projects' && currentUser) {
+      fetchProjects();
+    }
+  }, [currentView, currentUser]);
+
+  // Add function to fetch projects
+  const fetchProjects = async () => {
+    try {
+      // If user is logged in, fetch their projects, otherwise fetch all projects
+      const response = currentUser?.id 
+        ? await projectsApi.getByUser(currentUser.id)
+        : await projectsApi.getAll();
+        
+      if (response.data) {
+        setProjects(response.data);
+      }
+    } catch (error) {
+      console.error('Error fetching projects:', error);
+      toast.error('Failed to load projects');
+    }
+  };
 
   const handleLogin = async (username: string, password: string): Promise<boolean> => {
     try {
@@ -35,6 +59,9 @@ export default function App() {
           name: response.data.user.name,
           email: response.data.user.email
         });
+        
+        // Fetch projects after successful login
+        await fetchProjects();
         return true;
       }
       return false;
@@ -97,15 +124,21 @@ export default function App() {
     });
   };
 
-  const handleCreateProject = async (projectData: Omit<Project, 'id' | 'created_at' | 'status'>) => {
+  // Update handleCreateProject to fetch all projects after creation
+  const handleCreateProject = async (projectData: Omit<Project, 'id' | 'createdAt'>) => {
     try {
-      const response = await projectsApi.create(projectData);
-      console.log('Project creation response:', response.data);
+      const response = await projectsApi.create({
+        name: projectData.name,
+        description: projectData.description,
+        creator_id: currentUser?.id
+      });
       
-      // Fetch updated projects list
-      const projectsResponse = await projectsApi.getAll();
-      setProjects(projectsResponse.data);
-      toast.success('Project created successfully');
+      if (response.data.success) {
+        // Add the new project to the existing list
+        const newProject = response.data.project;
+        setProjects(prev => [...prev, newProject]);
+        toast.success('Project created successfully');
+      }
     } catch (error) {
       console.error('Error creating project:', error);
       toast.error('Failed to create project');
@@ -216,6 +249,13 @@ export default function App() {
   const handleBackFromDetail = () => {
     setSelectedSubmission(null);
   };
+
+  // Add effect to fetch projects when view changes
+  React.useEffect(() => {
+    if (currentView === 'manage-projects') {
+      fetchProjects();
+    }
+  }, [currentView]);
 
   // Show login screen if not authenticated
   if (!currentUser) {

@@ -18,8 +18,8 @@ def get_db():
     conn = None
     cursor = None
     try:
-        conn = connect(**db_config, buffered=True)  # Add buffered=True
-        cursor = conn.cursor(dictionary=True)
+        conn = connect(**db_config)
+        cursor = conn.cursor(dictionary=True, buffered=True)
         yield conn, cursor
     except Error as e:
         print(f"Database error: {e}")

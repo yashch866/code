@@ -11,15 +11,10 @@ const api = axios.create({
 
 export const authApi = {
   login: async (username: string, password: string) => {
-    const formData = new URLSearchParams();
-    formData.append('username', username);
-    formData.append('password', password);
-    
     try {
-      const response = await api.post('/auth/login', formData, {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
+      const response = await api.post('/auth/login', {
+        username,
+        password
       });
       console.log('Server response:', response.data);
       return response;
@@ -40,9 +35,9 @@ export const projectsApi = {
       const response = await api.post('/projects', {
         name: projectData.name,
         description: projectData.description || '',
-        creator_id: projectData.creator_id  // Add creator_id to request
+        creator_id: projectData.creator_id
       });
-      console.log('Project creation response:', response);
+      console.log('Project creation response:', response.data);
       return response;
     } catch (error) {
       console.error('Error creating project:', error);

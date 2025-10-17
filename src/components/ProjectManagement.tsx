@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from './ui/command';
 import { Plus, Users, FolderKanban, Trash2, UserPlus, Search, Check, Clock } from 'lucide-react';
 import { Project, User, UserRole } from '../types';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { cn } from './ui/utils';
 import { projectsApi } from '../services/api';
 
@@ -47,22 +47,19 @@ export function ProjectManagement({
 
   const handleCreateProject = async (data: { name: string; description: string }) => {
     try {
-      console.log('Creating project:', data);
       const response = await projectsApi.create({
         name: data.name,
         description: data.description,
-        creator_id: currentUser.id  // Add creator_id from currentUser prop
+        creator_id: currentUser.id
       });
-      console.log('Project creation response:', response);
       
       if (response.data.success) {
         toast.success('Project created successfully');
         setIsCreateDialogOpen(false);
         setNewProjectName('');
         setNewProjectDescription('');
-        // Refresh projects list
-        const updatedProjects = await projectsApi.getAll();
-        onCreateProject(updatedProjects.data);
+        // Pass the created project to parent
+        onCreateProject(response.data.project);
       }
     } catch (error) {
       console.error('Failed to create project:', error);
