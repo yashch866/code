@@ -8,24 +8,27 @@ import { SubmissionDetail } from './components/SubmissionDetail';
 import { ProjectsArchive } from './components/ProjectsArchive';
 import { ProjectManagement } from './components/ProjectManagement';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
-import { mockSubmissions, mockCompany, mockProjects } from './data/mockData';
+import { mockCompany } from './data/mockData';
 import { Submission, User, Project, UserRole, ProjectMember } from './types';
 import { toast } from 'sonner';
 import { Toaster } from './components/ui/sonner';
-import { authApi, projectsApi } from './services/api';
+import { authApi, projectsApi, usersApi } from './services/api';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentRole, setCurrentRole] = useState<UserRole>('developer');
-  const [users, setUsers] = useState<User[]>(mockCompany.users);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [submissions, setSubmissions] = useState<Submission[]>(mockSubmissions);
+  const [submissions, setSubmissions] = useState<Submission[]>([]); // Remove mock submissions
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
   const [currentView, setCurrentView] = useState('main');
+  const [companyUsers, setCompanyUsers] = useState<User[]>([]);
 
-  // Add useEffect to fetch projects when needed
+  // Effect to fetch both projects and users when needed
   React.useEffect(() => {
-    if (currentUser && (currentView === 'manage-projects' || currentView === 'main')) {
+    if (currentUser) {
+      if (currentView === 'manage-projects') {
+        fetchCompanyUsers();
+      }
       fetchProjects();
     }
   }, [currentView, currentUser]);
@@ -39,6 +42,18 @@ export default function App() {
     } catch (error) {
       console.error('Error fetching projects:', error);
       toast.error('Failed to load projects');
+    }
+  };
+
+  const fetchCompanyUsers = async () => {
+    try {
+      const response = await usersApi.getAll();
+      if (response.data) {
+        setCompanyUsers(response.data);
+      }
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      toast.error('Failed to load users');
     }
   };
 
@@ -119,7 +134,6 @@ export default function App() {
     });
   };
 
-  // Update handleCreateProject to fetch all projects after creation
   const handleCreateProject = async (projectData: Omit<Project, 'id' | 'createdAt'>) => {
     try {
       const response = await projectsApi.create({
@@ -290,6 +304,13 @@ export default function App() {
   const effectiveRoles = availableRoles.length > 0 ? availableRoles : ['developer'] as UserRole[];
   const effectiveRole = effectiveRoles.includes(currentRole) ? currentRole : effectiveRoles[0];
 
+  // Update project access check to allow all leads
+  const hasLeadAccess = (project: Project) => {
+    return project.members.some(member => 
+      member.userId === currentUser?.id && member.role === 'lead'
+    );
+  };
+
   // Render detail view if submission is selected
   if (selectedSubmission) {
     return (
@@ -374,7 +395,7 @@ export default function App() {
           <ProjectManagement
             projects={projects}
             currentUser={currentUser}
-            companyUsers={users}
+            companyUsers={companyUsers}  // Use real users instead of mock data
             onCreateProject={handleCreateProject}
             onAddMember={handleAddMember}
             onRemoveMember={handleRemoveMember}

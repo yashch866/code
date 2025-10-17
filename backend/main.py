@@ -120,44 +120,43 @@ async def get_projects(user_id: str = None):
     try:
         with get_db() as (conn, cursor):
             if user_id:
+                # Get all projects where user is a member
                 cursor.execute("""
-                    SELECT p.*, pm.role
+                    SELECT DISTINCT p.*
                     FROM projects p
-                    LEFT JOIN project_members pm ON p.id = pm.project_id AND pm.user_id = %s
+                    LEFT JOIN project_members pm ON p.id = pm.project_id
                     WHERE p.creator_id = %s OR pm.user_id = %s
-                """, (user_id, user_id, user_id))
+                """, (user_id, user_id))
             else:
                 cursor.execute("SELECT * FROM projects")
             
-            projects = {}
-            for row in cursor.fetchall():
-                project_id = row['id']
-                if project_id not in projects:
-                    projects[project_id] = {
-                        'id': project_id,  # Keep as number
-                        'name': row['name'],
-                        'description': row['description'],
-                        'createdBy': int(row['creator_id']),  # Convert to number
-                        'members': []
-                    }
-                    
-                    # Fetch members for this project
-                    cursor.execute("""
-                        SELECT pm.user_id, u.name, pm.role
-                        FROM project_members pm
-                        JOIN users u ON pm.user_id = u.id
-                        WHERE pm.project_id = %s
-                    """, (project_id,))
-                    
-                    members = cursor.fetchall()
-                    for member in members:
-                        projects[project_id]['members'].append({
-                            'userId': int(member['user_id']),  # Convert to number
-                            'userName': member['name'],
-                            'role': member['role']
-                        })
+            projects_data = cursor.fetchall()
+            projects = []
             
-            return list(projects.values())
+            for project in projects_data:
+                # Get all members for this project
+                cursor.execute("""
+                    SELECT pm.user_id, u.name as user_name, pm.role
+                    FROM project_members pm
+                    JOIN users u ON pm.user_id = u.id
+                    WHERE pm.project_id = %s
+                """, (project['id'],))
+                
+                members = cursor.fetchall()
+                
+                projects.append({
+                    'id': project['id'],
+                    'name': project['name'],
+                    'description': project['description'],
+                    'createdBy': project['creator_id'],
+                    'members': [{
+                        'userId': member['user_id'],
+                        'userName': member['user_name'],
+                        'role': member['role']
+                    } for member in members]
+                })
+            
+            return projects
     except Exception as e:
         print(f"Error fetching projects: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -227,7 +226,16 @@ async def add_project_member(request: Request):
         role = data.get('role')
         
         with get_db() as (conn, cursor):
-            # Add member to project
+            # Check if this exact role combination already exists
+            cursor.execute("""
+                SELECT * FROM project_members 
+                WHERE project_id = %s AND user_id = %s AND role = %s
+            """, (project_id, user_id, role))
+            
+            if cursor.fetchone():
+                raise HTTPException(status_code=400, detail="User already has this role in the project")
+            
+            # Add the new role for this user
             cursor.execute("""
                 INSERT INTO project_members (project_id, user_id, role)
                 VALUES (%s, %s, %s)
@@ -240,8 +248,8 @@ async def add_project_member(request: Request):
                 SELECT pm.user_id, u.name, pm.role
                 FROM project_members pm
                 JOIN users u ON pm.user_id = u.id
-                WHERE pm.project_id = %s AND pm.user_id = %s
-            """, (project_id, user_id))
+                WHERE pm.project_id = %s AND pm.user_id = %s AND pm.role = %s
+            """, (project_id, user_id, role))
             
             member = cursor.fetchone()
             return {
@@ -249,6 +257,8 @@ async def add_project_member(request: Request):
                 'userName': member['name'],
                 'role': member['role']
             }
+    except HTTPException as he:
+        raise he
     except Exception as e:
         print(f"Error adding member: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -361,6 +371,41 @@ async def get_submissions(user_id: Optional[str] = None, role: Optional[str] = N
             return submissions
     except Exception as e:
         print(f"Error fetching submissions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# User endpoints
+@app.get("/api/users")
+async def get_users():
+    try:
+        with get_db() as (conn, cursor):
+            cursor.execute("""
+                SELECT id, username, name, email 
+                FROM users
+            """)
+            users = cursor.fetchall()
+            return users
+    except Exception as e:
+        print(f"Error fetching users: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/users/recent")
+async def get_recent_interactions(user_id: int):
+    try:
+        with get_db() as (conn, cursor):
+            # Get users who are in the same projects as the current user
+            cursor.execute("""
+                SELECT DISTINCT u.id, u.username, u.name, u.email
+                FROM users u
+                JOIN project_members pm1 ON u.id = pm1.user_id
+                JOIN project_members pm2 ON pm1.project_id = pm2.project_id
+                WHERE pm2.user_id = %s 
+                ORDER BY u.id
+                LIMIT 5
+            """, (user_id,))
+            users = cursor.fetchall()
+            return users
+    except Exception as e:
+        print(f"Error fetching recent users: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

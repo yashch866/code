@@ -57,4 +57,9 @@ export const submissionsApi = {
   create: (data: any) => api.post('/submissions', data)
 };
 
+export const usersApi = {
+  getAll: () => api.get('/users'),
+  getRecentInteractions: (userId: number) => api.get(`/users/recent?user_id=${userId}`)
+};
+
 export default api;

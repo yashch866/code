@@ -67,6 +67,14 @@ export function ProjectManagement({
     }
   };
 
+  const isProjectLead = (project: Project) => {
+    return project.members.some(m => m.userId === currentUser.id && m.role === 'lead');
+  };
+
+  const getAvailableUsers = (projectId: number) => {
+    return companyUsers;
+  };
+
   const handleAddMember = (projectId: number) => {
     if (!projectId || !selectedUserId) {
       toast.error('Please select a user');
@@ -74,34 +82,16 @@ export function ProjectManagement({
     }
 
     const project = projects.find(p => p.id === projectId);
-    if (project?.members.some(m => m.userId === selectedUserId)) {
-      toast.error('User is already a member of this project');
+    if (project?.members.some(m => m.userId === selectedUserId && m.role === selectedRole)) {
+      toast.error('User already has this role in the project');
       return;
     }
 
     onAddMember(projectId, selectedUserId, selectedRole);
     
-    // Add to recent connections
-    setRecentConnections(prev => {
-      const newRecent = [selectedUserId, ...prev.filter(id => id !== selectedUserId)].slice(0, 5);
-      return newRecent;
-    });
-    
     setSelectedUserId(null);
     setSelectedUserName('');
     setOpenCombobox({ ...openCombobox, [projectId]: false });
-    toast.success('Member added to project');
-  };
-
-  const getAvailableUsers = (projectId: number) => {
-    const project = projects.find(p => p.id === projectId);
-    if (!project) return [];
-
-    return companyUsers.filter(
-      (user) =>
-        user.id !== currentUser.id &&
-        !project.members.some((m) => m.userId === user.id)
-    );
   };
 
   const getRecentUsers = (projectId: number) => {
@@ -185,9 +175,7 @@ export function ProjectManagement({
             const availableUsers = getAvailableUsers(project.id);
             const recentUsers = getRecentUsers(project.id);
             const isOpen = openCombobox[project.id] || false;
-            const isProjectLead = project.members.some(
-              m => m.userId === currentUser.id && m.role === 'lead'
-            );
+            const canManage = isProjectLead(project);
             
             return (
               <Card key={project.id} className="border-2 shadow-sm hover:shadow-md transition-shadow">
@@ -211,7 +199,7 @@ export function ProjectManagement({
                         <Users className="size-4" />
                         Team Members ({project.members.length})
                       </h4>
-                      {isProjectLead && (
+                      {canManage && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -225,14 +213,14 @@ export function ProjectManagement({
                     <div className="space-y-2">
                       {project.members.map((member) => (
                         <div
-                          key={member.userId}
+                          key={`${member.userId}-${member.role}`}
                           className="flex items-center justify-between p-2 bg-muted/50 rounded-lg"
                         >
                           <div>
                             <p className="font-medium">{member.userName}</p>
                             <p className="text-xs text-muted-foreground capitalize">{member.role}</p>
                           </div>
-                          {isProjectLead && member.userId !== currentUser.id && (
+                          {canManage && (member.userId !== currentUser.id || member.role !== 'lead') && (
                             <Button
                               variant="ghost"
                               size="sm"
@@ -246,7 +234,7 @@ export function ProjectManagement({
                     </div>
                   </div>
 
-                  {isProjectLead && (
+                  {canManage && (
                     <div className="pt-3 border-t space-y-3">
                       <h4 className="flex items-center gap-2">
                         <UserPlus className="size-4" />
@@ -276,50 +264,13 @@ export function ProjectManagement({
                           </PopoverTrigger>
                           <PopoverContent className="w-[350px] p-0" align="start">
                             <Command shouldFilter={true}>
-                              <CommandInput placeholder="Search by name, username or email..." />
+                              <CommandInput placeholder="Search users..." />
                               <CommandList>
                                 <CommandEmpty>No users found.</CommandEmpty>
-                                
-                                {recentUsers.length > 0 && (
-                                  <>
-                                    <CommandGroup heading="Recent">
-                                      {recentUsers.map((user) => (
-                                        <CommandItem
-                                          key={`recent-${user.id}`}
-                                          value={`${user.name.toLowerCase()} ${user.username.toLowerCase()} ${user.email.toLowerCase()}`}
-                                          onSelect={() => {
-                                            setSelectedProject(project.id);
-                                            setSelectedUserId(user.id);
-                                            setSelectedUserName(user.name);
-                                            setOpenCombobox({ ...openCombobox, [project.id]: false });
-                                          }}
-                                        >
-                                          <Check
-                                            className={cn(
-                                              "mr-2 size-4",
-                                              selectedUserId === user.id && selectedProject === project.id
-                                                ? "opacity-100"
-                                                : "opacity-0"
-                                            )}
-                                          />
-                                          <Clock className="mr-2 size-4 text-muted-foreground" />
-                                          <div className="flex flex-col flex-1 min-w-0">
-                                            <span className="truncate">{user.name}</span>
-                                            <span className="text-xs text-muted-foreground truncate">
-                                              @{user.username}
-                                            </span>
-                                          </div>
-                                        </CommandItem>
-                                      ))}
-                                    </CommandGroup>
-                                    <CommandSeparator />
-                                  </>
-                                )}
-                                
                                 <CommandGroup heading="All Users">
                                   {availableUsers.map((user) => (
                                     <CommandItem
-                                      key={user.id}
+                                      key={`${user.id}-${project.id}`}
                                       value={`${user.name.toLowerCase()} ${user.username.toLowerCase()} ${user.email.toLowerCase()}`}
                                       onSelect={() => {
                                         setSelectedProject(project.id);
