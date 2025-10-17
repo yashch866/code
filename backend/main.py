@@ -295,62 +295,34 @@ async def delete_project(project_id: int):
 
 # Submission endpoints
 @app.post("/api/submissions")
-async def create_submission(
-    project_id: str,
-    developer_id: str,
-    code: Optional[str] = None,
-    description: str = None,
-    files: Optional[List[Dict[str, str]]] = None,
-    manual_tests: Optional[List[Dict]] = None,
-    ai_test_results: Optional[Dict] = None
-):
+async def create_submission(request: Request):
     try:
+        data = await request.json()
+        required_fields = ['project_id', 'developer_id', 'code', 'description']
+        
+        # Validate required fields
+        for field in required_fields:
+            if field not in data:
+                raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+        
         with get_db() as (conn, cursor):
-            # Get project name
-            cursor.execute("SELECT name FROM projects WHERE id = %s", (project_id,))
-            project = cursor.fetchone()
-            if not project:
-                raise HTTPException(status_code=404, detail="Project not found")
-            
-            # Get developer name
-            cursor.execute("SELECT name FROM users WHERE id = %s", (developer_id,))
-            developer = cursor.fetchone()
-            if not developer:
-                raise HTTPException(status_code=404, detail="Developer not found")
-            
-            # Insert submission
+            # Insert submission with only the required fields
+            # status defaults to 'pending' and submitted_date is auto-generated
             cursor.execute("""
-                INSERT INTO submissions (
-                    project_id, project_name, developer_id, developer_name,
-                    code, description, submitted_date, status, files, ai_test_results
-                ) VALUES (
-                    %s, %s, %s, %s, %s, %s, NOW(), 'submitted', %s, %s)
-            """, (
-                project_id,
-                project['name'],
-                developer_id,
-                developer['name'],
-                code,
-                description,
-                json.dumps(files) if files else None,
-                json.dumps(ai_test_results) if ai_test_results else None
-            ))
+                INSERT INTO submissions (project_id, developer_id, code, description, status, submitted_date)
+                VALUES (%s, %s, %s, %s, 'pending', NOW())
+            """, (data['project_id'], data['developer_id'], data['code'], data['description']))
             
             submission_id = cursor.lastrowid
-            
-            # Insert manual tests if provided
-            if manual_tests:
-                for test in manual_tests:
-                    cursor.execute("""
-                        INSERT INTO manual_tests (submission_id, name, status, description)
-                        VALUES (%s, %s, %s, %s)
-                    """, (submission_id, test["name"], test["status"], test.get("description")))
-            
             conn.commit()
+            
             return {"message": "Submission created successfully", "id": submission_id}
+            
+    except HTTPException as he:
+        raise he
     except Exception as e:
         print(f"Error creating submission: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/submissions")
 async def get_submissions(user_id: Optional[str] = None, role: Optional[str] = None):

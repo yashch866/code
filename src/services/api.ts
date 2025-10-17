@@ -57,25 +57,13 @@ export const submissionsApi = {
   getByUser: (userId: number, role: string) => 
     api.get(`/submissions?user_id=${userId}&role=${role}`),
   create: async (submission: {
-    projectId: string | number,
-    description: string,
-    code?: string,
-    files?: any[],
-    manual_tests?: any[],
-    ai_test_results?: any,
-    developer_id: number,
-    developer_name: string,
+    project_id: string;
+    developer_id: string;
+    code: string;
+    description: string;
   }) => {
     try {
-      const response = await api.post('/submissions', {
-        project_id: Number(submission.projectId),
-        developer_id: submission.developer_id,
-        description: submission.description,
-        code: submission.code,
-        files: submission.files,
-        manual_tests: submission.manual_tests,
-        ai_test_results: submission.ai_test_results
-      });
+      const response = await api.post('/submissions', submission);
       return response;
     } catch (error) {
       console.error('Error creating submission:', error);

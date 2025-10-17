@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { cn } from './ui/utils';
 import { ManualTestDialog } from './ManualTestDialog';
+import { submissionsApi } from '../services/api';
 
 type SubmissionFormProps = {
   projects: Project[];
@@ -127,7 +128,7 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.projectId) {
@@ -135,65 +136,37 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
       return;
     }
 
-    const selectedProject = projects.find(p => p.id === Number(formData.projectId));
-    if (!selectedProject) {
-      toast.error('Invalid project selected');
-      return;
-    }
-
-    if (submissionType === 'code' && !formData.code.trim()) {
+    if (!formData.code.trim()) {
       toast.error('Please paste your code');
       return;
     }
 
-    if (submissionType === 'attachments' && files.length === 0) {
-      toast.error('Please upload at least one file');
-      return;
-    }
-    
-    if (manualTests.length === 0) {
-      toast.error('Please add at least one manual test');
+    if (!formData.description.trim()) {
+      toast.error('Please enter a description');
       return;
     }
 
-    const invalidTests = manualTests.filter((test) => !test.name.trim() || !test.description.trim());
-    if (invalidTests.length > 0) {
-      toast.error('Please fill in all test names and descriptions');
-      return;
+    try {
+      // Submit only the required fields that match database schema
+      await submissionsApi.create({
+        project_id: formData.projectId,
+        developer_id: currentUser.id.toString(),
+        code: formData.code,
+        description: formData.description
+      });
+      
+      // Reset form but keep all UI state
+      setFormData({
+        projectId: '',
+        description: '',
+        code: '',
+      });
+      
+      toast.success('Code submitted for review successfully!');
+    } catch (error) {
+      console.error('Submission error:', error);
+      toast.error('Failed to submit code for review');
     }
-
-    if (!aiTestResults || !aiCodeAnalysis) {
-      toast.error('Please run AI Automated Tests before submitting');
-      return;
-    }
-
-    const submission = {
-      projectId: formData.projectId,
-      projectName: selectedProject.name,
-      developerName: currentUser.name,
-      description: formData.description,
-      code: submissionType === 'code' ? formData.code : undefined,
-      files: submissionType === 'attachments' ? files : undefined,
-      manualTests,
-      aiTestResults,
-      aiCodeAnalysis,
-    };
-
-    onSubmit(submission);
-    
-    // Reset form
-    setFormData({
-      projectId: '',
-      description: '',
-      code: '',
-    });
-    setFiles([]);
-    setManualTests([]);
-    setAITestResults(null);
-    setAICodeAnalysis(null);
-    setSubmissionType('code');
-    
-    toast.success('Submission created successfully!');
   };
 
   return (
