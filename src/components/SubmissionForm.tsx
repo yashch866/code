@@ -147,25 +147,40 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
     }
 
     try {
-      // Submit only the required fields that match database schema
-      await submissionsApi.create({
+      // Create submission with manual tests
+      const response = await submissionsApi.create({
         project_id: formData.projectId,
-        developer_id: currentUser.id.toString(),
+        developer_id: currentUser.id,
         code: formData.code,
-        description: formData.description
+        description: formData.description,
+        manual_tests: manualTests.map(test => ({
+          name: test.name,
+          description: test.description,
+          status: test.status
+        }))
+      });
+
+      // Call the parent onSubmit callback
+      onSubmit({
+        projectId: formData.projectId,
+        code: formData.code,
+        description: formData.description,
       });
       
-      // Reset form but keep all UI state
+      // Reset form
       setFormData({
         projectId: '',
         description: '',
         code: '',
       });
+      setManualTests([]);
+      setAITestResults(null);
+      setAICodeAnalysis(null);
       
-      toast.success('Code submitted for review successfully!');
+      toast.success('Code and tests submitted successfully!');
     } catch (error) {
-      console.error('Submission error:', error);
-      toast.error('Failed to submit code for review');
+      console.error('Error submitting code:', error);
+      toast.error('Failed to submit code. Please try again.');
     }
   };
 

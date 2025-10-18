@@ -1,3 +1,4 @@
+import React from 'react';
 import { Submission } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
@@ -11,13 +12,14 @@ type SubmissionsListProps = {
 };
 
 const statusConfig = {
-  'submitted': { label: 'Submitted', color: 'bg-blue-500/10 text-blue-700 dark:text-blue-400', icon: Clock },
+  submitted: { label: 'Submitted', color: 'bg-blue-500/10 text-blue-700 dark:text-blue-400', icon: Clock },
   'lead-review': { label: 'Lead Review', color: 'bg-purple-500/10 text-purple-700 dark:text-purple-400', icon: PlayCircle },
   'ai-testing': { label: 'AI Testing', color: 'bg-yellow-500/10 text-yellow-700 dark:text-yellow-400', icon: PlayCircle },
   'user-review': { label: 'User Review', color: 'bg-orange-500/10 text-orange-700 dark:text-orange-400', icon: PlayCircle },
-  'approved': { label: 'Approved', color: 'bg-green-500/10 text-green-700 dark:text-green-400', icon: CheckCircle2 },
-  'rejected': { label: 'Rejected', color: 'bg-red-500/10 text-red-700 dark:text-red-400', icon: XCircle },
-};
+  approved: { label: 'Approved', color: 'bg-green-500/10 text-green-700 dark:text-green-400', icon: CheckCircle2 },
+  rejected: { label: 'Rejected', color: 'bg-red-500/10 text-red-700 dark:text-red-400', icon: XCircle },
+  default: { label: 'Processing', color: 'bg-gray-500/10 text-gray-700 dark:text-gray-400', icon: Clock }
+} as const;
 
 export function SubmissionsList({ submissions, onSelectSubmission, title }: SubmissionsListProps) {
   const formatDate = (dateString: string) => {
@@ -48,10 +50,10 @@ export function SubmissionsList({ submissions, onSelectSubmission, title }: Subm
           </div>
         ) : (
           submissions.map((submission) => {
-            const config = statusConfig[submission.status];
+            const config = statusConfig[submission.status as keyof typeof statusConfig] || statusConfig.default;
             const Icon = config.icon;
-            const passedTests = submission.manualTests.filter(t => t.status === 'passed').length;
-            const totalTests = submission.manualTests.length;
+            const passedTests = submission.manualTests?.filter(t => t.status === 'passed').length ?? 0;
+            const totalTests = submission.manualTests?.length ?? 0;
             const passRate = totalTests > 0 ? Math.round((passedTests / totalTests) * 100) : 0;
 
             return (

@@ -6,8 +6,10 @@ import { Textarea } from './ui/textarea';
 import { Progress } from './ui/progress';
 import { Separator } from './ui/separator';
 import { CheckCircle2, XCircle, AlertCircle, ArrowLeft, Download, File, Sparkles } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner@2.0.3';
+import { ManualTestDialog } from './ManualTestDialog';
+import { manualTestsApi } from '../services/api';
 
 type SubmissionDetailProps = {
   submission: Submission;
@@ -25,6 +27,40 @@ export function SubmissionDetail({
   userRole,
 }: SubmissionDetailProps) {
   const [comments, setComments] = useState('');
+  const [isManualTestDialogOpen, setIsManualTestDialogOpen] = useState(false);
+  const [manualTests, setManualTests] = useState(submission.manualTests || []);
+
+  // Load manual tests when component mounts
+  useEffect(() => {
+    loadManualTests();
+  }, [submission.id]);
+
+  const loadManualTests = async () => {
+    try {
+      const response = await manualTestsApi.getBySubmission(Number(submission.id));
+      setManualTests(response.data);
+    } catch (error) {
+      console.error('Error loading manual tests:', error);
+      toast.error('Failed to load manual tests');
+    }
+  };
+
+  const handleManualTestSubmit = async (test: ManualTest) => {
+    try {
+      await manualTestsApi.create({
+        submission_id: submission.id,
+        name: test.name,
+        description: test.description,
+        status: test.status
+      });
+      
+      toast.success('Manual test added successfully');
+      loadManualTests(); // Reload the tests
+    } catch (error) {
+      console.error('Error saving manual test:', error);
+      toast.error('Failed to save manual test');
+    }
+  };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -169,12 +205,20 @@ export function SubmissionDetail({
       </Card>
 
       <Card className="border-2 shadow-sm">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Manual Test Details</CardTitle>
+          {userRole === 'developer' && (
+            <Button 
+              onClick={() => setIsManualTestDialogOpen(true)}
+              className="gap-2"
+            >
+              Add Manual Test
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {submission.manualTests.map((test, index) => (
+            {manualTests.map((test, index) => (
               <div
                 key={test.id}
                 className="p-4 border rounded-lg space-y-2"
@@ -197,6 +241,11 @@ export function SubmissionDetail({
                 </div>
               </div>
             ))}
+            {manualTests.length === 0 && (
+              <div className="text-center text-muted-foreground py-8">
+                No manual tests added yet
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -470,6 +519,12 @@ export function SubmissionDetail({
             </CardContent>
           </Card>
         )}
+      <ManualTestDialog
+        open={isManualTestDialogOpen}
+        onOpenChange={setIsManualTestDialogOpen}
+        submissionId={submission.id}
+        onSubmit={handleManualTestSubmit}
+      />
     </div>
   );
 }

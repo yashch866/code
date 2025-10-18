@@ -376,15 +376,47 @@ async def get_submissions(user_id: Optional[str] = None, role: Optional[str] = N
                 
             submissions = cursor.fetchall()
             
-            # Get manual tests for each submission
+            # Get manual tests for each submission and format the response
+            formatted_submissions = []
             for submission in submissions:
                 cursor.execute("""
                     SELECT * FROM manual_tests
                     WHERE submission_id = %s
                 """, (submission['id'],))
-                submission['manual_tests'] = [dict(test) for test in cursor.fetchall()]
+                manual_tests = cursor.fetchall()
+                
+                # Convert submission dict to have the expected structure
+                formatted_submission = {
+                    'id': str(submission['id']),
+                    'projectId': str(submission['project_id']),
+                    'projectName': submission['project_name'],
+                    'developerId': str(submission['developer_id']),
+                    'developerName': submission['developer_name'],
+                    'submittedDate': submission['submitted_date'].isoformat() if submission['submitted_date'] else None,
+                    'status': submission['status'],
+                    'code': submission['code'],
+                    'description': submission['description'],
+                    'manualTests': [
+                        {
+                            'id': str(test['id']),
+                            'name': test['name'],
+                            'status': test['status'],
+                            'description': test['description']
+                        } for test in manual_tests
+                    ],
+                    # Initialize empty AI test results to prevent frontend errors
+                    'aiTestResults': {
+                        'total': 0,
+                        'passed': 0,
+                        'failed': 0,
+                        'coverage': 0,
+                        'issues': [],
+                        'tests': []
+                    }
+                }
+                formatted_submissions.append(formatted_submission)
             
-            return [dict(submission) for submission in submissions]
+            return formatted_submissions
     except Exception as e:
         print(f"Error fetching submissions: {e}")
         raise HTTPException(status_code=500, detail=str(e))

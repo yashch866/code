@@ -12,7 +12,7 @@ import { mockCompany } from './data/mockData';
 import { Submission, User, Project, UserRole, ProjectMember } from './types';
 import { toast } from 'sonner';
 import { Toaster } from './components/ui/sonner';
-import { authApi, projectsApi, usersApi } from './services/api';
+import { authApi, projectsApi, usersApi, submissionsApi } from './services/api';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -30,8 +30,9 @@ export default function App() {
         fetchCompanyUsers();
       }
       fetchProjects();
+      fetchSubmissions(); // Add this line to fetch submissions
     }
-  }, [currentView, currentUser]);
+  }, [currentView, currentUser, currentRole]); // Add currentRole as dependency
 
   const fetchProjects = async () => {
     try {
@@ -42,6 +43,19 @@ export default function App() {
     } catch (error) {
       console.error('Error fetching projects:', error);
       toast.error('Failed to load projects');
+    }
+  };
+
+  const fetchSubmissions = async () => {
+    if (!currentUser) return;
+    try {
+      const response = await submissionsApi.getByUser(currentUser.id, currentRole);
+      if (response.data) {
+        setSubmissions(response.data);
+      }
+    } catch (error) {
+      console.error('Error fetching submissions:', error);
+      toast.error('Failed to load submissions');
     }
   };
 

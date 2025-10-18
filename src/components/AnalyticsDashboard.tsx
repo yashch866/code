@@ -73,10 +73,10 @@ export function AnalyticsDashboard({ submissions }: AnalyticsDashboardProps) {
 
   // Test pass rates
   const avgManualPassRate =
-    submissions.length > 0
+    submissions.length > 0 && submissions.every(s => s.manualTests?.length > 0)
       ? Math.round(
           submissions.reduce((sum, s) => {
-            const passRate = (s.manualTests.filter(t => t.status === 'passed').length / s.manualTests.length) * 100;
+            const passRate = (s.manualTests?.filter(t => t.status === 'passed').length ?? 0) / (s.manualTests?.length ?? 1) * 100;
             return sum + passRate;
           }, 0) / submissions.length
         )
@@ -87,7 +87,7 @@ export function AnalyticsDashboard({ submissions }: AnalyticsDashboardProps) {
       ? Math.round(
           submissions
             .filter((s) => s.aiTestResults)
-            .reduce((sum, s) => sum + (s.aiTestResults!.passed / s.aiTestResults!.total) * 100, 0) /
+            .reduce((sum, s) => sum + ((s.aiTestResults?.passed ?? 0) / (s.aiTestResults?.total ?? 1)) * 100, 0) /
             submissions.filter((s) => s.aiTestResults).length
         )
       : 0;
