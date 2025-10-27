@@ -1,13 +1,13 @@
-import { Submission } from '../types';
+import React, { useState, useEffect } from 'react';
+import { Submission, ManualTest } from '../types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { Progress } from './ui/progress';
 import { Separator } from './ui/separator';
-import { CheckCircle2, XCircle, AlertCircle, ArrowLeft, Download, File, Sparkles } from 'lucide-react';
-import { useState, useEffect } from 'react';
-import { toast } from 'sonner@2.0.3';
+import { CheckCircle2, XCircle, AlertCircle, ArrowLeft, Download, File, Sparkles, Eye, EyeOff } from 'lucide-react';
+import { toast } from 'sonner';
 import { ManualTestDialog } from './ManualTestDialog';
 import { manualTestsApi } from '../services/api';
 
@@ -29,6 +29,7 @@ export function SubmissionDetail({
   const [comments, setComments] = useState('');
   const [isManualTestDialogOpen, setIsManualTestDialogOpen] = useState(false);
   const [manualTests, setManualTests] = useState(submission.manualTests || []);
+  const [showResults, setShowResults] = useState(false);
 
   // Load manual tests when component mounts
   useEffect(() => {
@@ -146,9 +147,19 @@ export function SubmissionDetail({
           <>
             <Card className="border-2 shadow-sm hover:shadow-md transition-shadow bg-gradient-to-br from-purple-50/50 to-blue-50/50 dark:from-purple-950/20 dark:to-blue-950/20">
               <CardHeader>
-                <div className="flex items-center gap-2">
-                  <Sparkles className="size-5 text-purple-600" />
-                  <CardTitle>AI Automated Tests</CardTitle>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="size-5 text-purple-600" />
+                    <CardTitle>AI Automated Tests</CardTitle>
+                  </div>
+                  <Button 
+                    onClick={() => setShowResults(!showResults)}
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                  >
+                    {showResults ? 'Hide Results' : 'View Results'}
+                  </Button>
                 </div>
                 <CardDescription className="text-xs">Run by developer before submission</CardDescription>
               </CardHeader>
@@ -194,6 +205,152 @@ export function SubmissionDetail({
           </>
         )}
       </div>
+
+      {/* Show detailed AI results when showResults is true */}
+      {submission.aiTestResults && showResults && (
+        <>
+          {submission.aiCodeAnalysis && (
+            <Card className="border-2 shadow-sm bg-gradient-to-br from-purple-50/30 to-blue-50/30 dark:from-purple-950/10 dark:to-blue-950/10">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Sparkles className="size-5 text-purple-600" />
+                  <CardTitle>AI Code Analysis</CardTitle>
+                </div>
+                <CardDescription>Comprehensive code quality analysis run by developer</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span>Security</span>
+                      <span className={submission.aiCodeAnalysis.securityScore >= 80 ? 'text-green-600' : 'text-yellow-600'}>
+                        {submission.aiCodeAnalysis.securityScore}%
+                      </span>
+                    </div>
+                    <Progress value={submission.aiCodeAnalysis.securityScore} />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span>Performance</span>
+                      <span className={submission.aiCodeAnalysis.performanceScore >= 80 ? 'text-green-600' : 'text-yellow-600'}>
+                        {submission.aiCodeAnalysis.performanceScore}%
+                      </span>
+                    </div>
+                    <Progress value={submission.aiCodeAnalysis.performanceScore} />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span>Maintainability</span>
+                      <span className={submission.aiCodeAnalysis.maintainabilityScore >= 80 ? 'text-green-600' : 'text-yellow-600'}>
+                        {submission.aiCodeAnalysis.maintainabilityScore}%
+                      </span>
+                    </div>
+                    <Progress value={submission.aiCodeAnalysis.maintainabilityScore} />
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <div className="text-muted-foreground">Cyclomatic Complexity</div>
+                    <div className="text-2xl mt-1">{submission.aiCodeAnalysis.complexityMetrics.cyclomaticComplexity}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Lines of Code</div>
+                    <div className="text-2xl mt-1">{submission.aiCodeAnalysis.complexityMetrics.linesOfCode}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Cognitive Complexity</div>
+                    <div className="text-2xl mt-1">{submission.aiCodeAnalysis.complexityMetrics.cognitiveComplexity}</div>
+                  </div>
+                </div>
+
+                {submission.aiCodeAnalysis.suggestions.length > 0 && (
+                  <>
+                    <Separator />
+                    <div>
+                      <h4 className="mb-3">Suggestions</h4>
+                      <ul className="space-y-2">
+                        {submission.aiCodeAnalysis.suggestions.map((suggestion, index) => (
+                          <li key={index} className="flex items-start gap-2">
+                            <span className="text-blue-600 dark:text-blue-400">•</span>
+                            <span>{suggestion}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </>
+                )}
+
+                {submission.aiCodeAnalysis.vulnerabilities.length > 0 && (
+                  <>
+                    <Separator />
+                    <div>
+                      <h4 className="mb-3 text-red-600 dark:text-red-400">Vulnerabilities</h4>
+                      <ul className="space-y-2">
+                        {submission.aiCodeAnalysis.vulnerabilities.map((vulnerability, index) => (
+                          <li key={index} className="flex items-start gap-2">
+                            <AlertCircle className="size-4 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                            <span>{vulnerability}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {submission.aiTestResults.issues.length > 0 && (
+            <Card className="border-2 border-yellow-200 dark:border-yellow-900 shadow-sm bg-yellow-50/50 dark:bg-yellow-950/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertCircle className="size-5 text-yellow-600" />
+                  AI-Detected Issues
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2">
+                  {submission.aiTestResults.issues.map((issue, index) => (
+                    <li key={index} className="flex items-start gap-2">
+                      <span className="text-yellow-600 dark:text-yellow-400">•</span>
+                      <span>{issue}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+
+          <Card className="border-2 shadow-sm">
+            <CardHeader>
+              <CardTitle>AI Generated Test Results</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {submission.aiTestResults.tests.map((test, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between p-3 border rounded-lg"
+                  >
+                    <div className="flex items-center gap-3">
+                      {test.status === 'passed' ? (
+                        <CheckCircle2 className="size-5 text-green-600 dark:text-green-400" />
+                      ) : (
+                        <XCircle className="size-5 text-red-600 dark:text-red-400" />
+                      )}
+                      <span>{test.testName}</span>
+                    </div>
+                    <Badge variant="outline">{test.duration}ms</Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
 
       <Card className="border-2 shadow-sm">
         <CardHeader>
@@ -522,7 +679,6 @@ export function SubmissionDetail({
       <ManualTestDialog
         open={isManualTestDialogOpen}
         onOpenChange={setIsManualTestDialogOpen}
-        submissionId={submission.id}
         onSubmit={handleManualTestSubmit}
       />
     </div>

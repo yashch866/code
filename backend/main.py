@@ -376,14 +376,26 @@ async def get_submissions(user_id: Optional[str] = None, role: Optional[str] = N
                 
             submissions = cursor.fetchall()
             
-            # Get manual tests for each submission and format the response
+            # Get manual tests and AI test results for each submission
             formatted_submissions = []
             for submission in submissions:
+                # Get manual tests
                 cursor.execute("""
                     SELECT * FROM manual_tests
                     WHERE submission_id = %s
                 """, (submission['id'],))
                 manual_tests = cursor.fetchall()
+
+                # Get AI test results
+                cursor.execute("""
+                    SELECT * FROM ai_test_results
+                    WHERE submission_id = %s
+                """, (submission['id'],))
+                ai_tests = cursor.fetchall()
+
+                # Calculate AI test summary
+                total_ai_tests = len(ai_tests)
+                passed_ai_tests = sum(1 for test in ai_tests if test['status'] == 'passed')
                 
                 # Convert submission dict to have the expected structure
                 formatted_submission = {
@@ -404,15 +416,19 @@ async def get_submissions(user_id: Optional[str] = None, role: Optional[str] = N
                             'description': test['description']
                         } for test in manual_tests
                     ],
-                    # Initialize empty AI test results to prevent frontend errors
                     'aiTestResults': {
-                        'total': 0,
-                        'passed': 0,
-                        'failed': 0,
-                        'coverage': 0,
-                        'issues': [],
-                        'tests': []
-                    }
+                        'total': total_ai_tests,
+                        'passed': passed_ai_tests,
+                        'failed': total_ai_tests - passed_ai_tests,
+                        'coverage': round(passed_ai_tests / total_ai_tests * 100 if total_ai_tests > 0 else 0),
+                        'issues': [test['error_message'] for test in ai_tests if test['error_message']],
+                        'tests': [{
+                            'testName': test['test_name'],
+                            'status': test['status'],
+                            'duration': 45,  # Default execution time
+                            'description': test['description'] if 'description' in test else None
+                        } for test in ai_tests]
+                    } if total_ai_tests > 0 else None
                 }
                 formatted_submissions.append(formatted_submission)
             
@@ -519,15 +535,13 @@ async def get_ai_test_results(submission_id: int):
                 'total': total_tests,
                 'passed': passed_tests,
                 'failed': total_tests - passed_tests,
-                'coverage': 0,  # This would need to be calculated separately
-                'issues': [],   # This would need additional logic to determine issues
+                'coverage': round(passed_tests / total_tests * 100 if total_tests > 0 else 0),
+                'issues': [test['error_message'] for test in test_results if test['error_message']],
                 'tests': [{
-                    'test_name': test['test_name'],
-                    'test_code': test['test_code'],
-                    'expected_output': test['expected_output'],
-                    'actual_output': test['actual_output'],
+                    'testName': test['test_name'],
                     'status': test['status'],
-                    'error_message': test['error_message']
+                    'duration': 45, # Default execution time
+                    'description': test['description'] if 'description' in test else None
                 } for test in test_results]
             }
     except Exception as e:
