@@ -11,7 +11,10 @@ db_config = {
     "password": "code123",
     "database": "code_submission_db",
     "raise_on_warnings": True,
-    "connection_timeout": 5
+    "connection_timeout": 30,  # Increased timeout
+    "buffered": True,         # Added buffered parameter
+    "pool_size": 5,          # Connection pooling
+    "pool_name": "mypool"    # Pool name
 }
 
 @contextmanager

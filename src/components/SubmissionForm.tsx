@@ -5,18 +5,19 @@ import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Submission, FileAttachment, ManualTest, Project, User, AICodeAnalysis } from '../types';
-import { Upload, X, File, Plus, CheckCircle, XCircle, Sparkles, PlayCircle, Loader2, TrendingUp, Shield, Zap, AlertTriangle } from 'lucide-react';
+import { Upload, X, File, Plus, CheckCircle, XCircle, Sparkles, PlayCircle, Loader2, TrendingUp, Shield, Zap, AlertTriangle, Eye } from 'lucide-react';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Alert, AlertDescription } from './ui/alert';
 import { Separator } from './ui/separator';
 import { Progress } from './ui/progress';
-import { runAITests, generateCodeAnalysis } from '../tests/mocks/ai-test-generator';
+import { runAITests, generateCodeAnalysis, generateTestCases } from '../tests/mocks/ai-test-generator';
 import { toast } from 'sonner';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { cn } from './ui/utils';
 import { ManualTestDialog } from './ManualTestDialog';
-import { submissionsApi } from '../services/api';
+import { submissionsApi, aiTestsApi } from '../services/api';
+import { AITestResultsPage } from './AITestResultsPage';
 
 type SubmissionFormProps = {
   projects: Project[];
@@ -38,6 +39,8 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
   const [isRunningAITests, setIsRunningAITests] = useState(false);
   const [aiTestResults, setAITestResults] = useState<Submission['aiTestResults'] | null>(null);
   const [aiCodeAnalysis, setAICodeAnalysis] = useState<AICodeAnalysis | null>(null);
+  const [showAIResults, setShowAIResults] = useState(false);
+  const [aiDetailedResults, setAiDetailedResults] = useState([]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files;
@@ -92,6 +95,24 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
     setManualTests(prev => prev.filter(test => test.id !== id));
   };
 
+  const handleViewResults = () => {
+    // Using the mock generated test cases directly without storing in DB
+    const testCases = generateTestCases(submissionType === 'code' ? formData.code : files.map(f => f.content).join('\n'));
+    
+    // Format the test cases to match the expected structure
+    const formattedResults = testCases.map(test => ({
+      test_name: test.testName,
+      test_code: test.code,
+      expected_output: test.expectedResult,
+      actual_output: test.status === 'passed' ? test.expectedResult : 'Unexpected output',
+      status: test.status,
+      error_message: test.status === 'failed' ? 'Test assertion failed' : undefined,
+    }));
+
+    setAiDetailedResults(formattedResults);
+    setShowAIResults(true);
+  };
+
   const handleRunAITests = async () => {
     if (submissionType === 'code' && !formData.code) {
       toast.error('Please add code before running AI tests');
@@ -104,22 +125,37 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
     }
 
     setIsRunningAITests(true);
-    toast.info('Running AI automated tests and code analysis...', {
-      description: 'AI is generating and executing comprehensive test cases...',
+    toast.info('Running AI automated tests...', {
+      description: 'Generating and executing test cases...',
     });
 
     try {
       const codeToTest = submissionType === 'code' ? formData.code : files.map(f => f.content).join('\n');
+      
+      // Generate test results using mock AI - but don't store in DB yet
       const testResults = await runAITests(codeToTest);
       const codeAnalysis = await generateCodeAnalysis(codeToTest);
+      const testCases = generateTestCases(codeToTest);
 
       setAITestResults(testResults);
       setAICodeAnalysis(codeAnalysis);
+      
+      // Format and store test cases for viewing
+      const formattedResults = testCases.map(test => ({
+        test_name: test.testName,
+        test_code: test.code,
+        expected_output: test.expectedResult,
+        actual_output: test.status === 'passed' ? test.expectedResult : 'Unexpected output',
+        status: test.status,
+        error_message: test.status === 'failed' ? 'Test assertion failed' : undefined,
+      }));
+      setAiDetailedResults(formattedResults);
 
       toast.success('AI automated tests completed!', {
-        description: `${testResults.passed}/${testResults.total} tests passed. Review the results below.`,
+        description: `${testResults.passed}/${testResults.total} tests passed. Click View Results for details.`,
       });
     } catch (error) {
+      console.error('Failed to run AI tests:', error);
       toast.error('Failed to run AI tests', {
         description: error instanceof Error ? error.message : 'An unexpected error occurred',
       });
@@ -147,10 +183,10 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
     }
 
     try {
-      // Create submission with manual tests
+      // Create submission first to get the submission ID
       const response = await submissionsApi.create({
         project_id: formData.projectId,
-        developer_id: currentUser.id,
+        developer_id: currentUser.id.toString(),
         code: formData.code,
         description: formData.description,
         manual_tests: manualTests.map(test => ({
@@ -160,11 +196,34 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
         }))
       });
 
+      const submissionId = response.data.id;
+
+      // Store AI test results if they exist
+      if (aiDetailedResults && aiDetailedResults.length > 0) {
+        for (const test of aiDetailedResults) {
+          await aiTestsApi.create({
+            submission_id: submissionId,
+            test_name: test.test_name,
+            test_code: test.test_code,
+            expected_output: test.expected_output,
+            actual_output: test.actual_output,
+            status: test.status,
+            error_message: test.error_message
+          });
+        }
+      }
+
+      // Get project name for onSubmit
+      const project = projects.find(p => p.id.toString() === formData.projectId);
+      
       // Call the parent onSubmit callback
       onSubmit({
         projectId: formData.projectId,
+        projectName: project?.name || 'Unknown Project',
+        developerName: currentUser.name,
         code: formData.code,
         description: formData.description,
+        manualTests: manualTests
       });
       
       // Reset form
@@ -176,6 +235,7 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
       setManualTests([]);
       setAITestResults(null);
       setAICodeAnalysis(null);
+      setAiDetailedResults([]); // Clear detailed results too
       
       toast.success('Code and tests submitted successfully!');
     } catch (error) {
@@ -183,6 +243,16 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
       toast.error('Failed to submit code. Please try again.');
     }
   };
+
+  // Add early return for showing AI results
+  if (showAIResults && aiDetailedResults.length > 0) {
+    return (
+      <AITestResultsPage 
+        aiTestResults={aiDetailedResults}
+        onBack={() => setShowAIResults(false)}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -504,9 +574,19 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
 
               {aiTestResults && aiCodeAnalysis && (
                 <div className="space-y-4 pt-4 border-t">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="size-5 text-green-600" />
-                    <h4>AI Test Results</h4>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="size-5 text-green-600" />
+                      <h4>AI Test Results</h4>
+                    </div>
+                    <Button 
+                      onClick={handleViewResults}
+                      variant="outline"
+                      className="gap-2"
+                    >
+                      <Eye className="size-4" />
+                      View Results
+                    </Button>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

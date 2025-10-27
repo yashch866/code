@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
 
@@ -40,10 +40,11 @@ class Project(BaseModel):
     created_date: datetime
 
 class ProjectMember(BaseModel):
-    id: str
-    user_id: str
-    project_id: str
+    id: int
+    user_id: int
+    project_id: int
     role: str  # 'developer', 'lead', 'reviewer'
+    name: Optional[str] = None  # For displaying member names
 
 class ManualTest(BaseModel):
     id: str
@@ -53,27 +54,34 @@ class ManualTest(BaseModel):
     description: Optional[str] = None
 
 class AITestResults(BaseModel):
-    total: int
-    passed: int
-    failed: int
-    coverage: float
-    insights: List[str]
-    generatedTests: List[Dict]
-    codeQuality: Dict
-    recommendations: List[str]
+    id: Optional[int] = None
+    submission_id: Optional[int] = None
+    function_code: Optional[str] = None
+    test_name: Optional[str] = None
+    test_code: Optional[str] = None
+    expected_output: Optional[str] = None
+    actual_output: Optional[str] = None
+    status: Optional[str] = None  # Status of the test execution
+    error_message: Optional[str] = None
+    created_at: Optional[datetime] = None
+    total: Optional[int] = 0
+    passed: Optional[int] = 0
+    failed: Optional[int] = 0
+    coverage: Optional[float] = 0
+    tests: Optional[List[Dict]] = []
 
 class Submission(BaseModel):
-    id: str
-    project_id: str
+    id: int
+    project_id: int
     project_name: str
-    developer_id: str
+    developer_id: int
     developer_name: str
     code: Optional[str] = None
     description: str
     submitted_date: datetime
     status: str  # 'submitted', 'lead-review', 'ai-testing', 'user-review', 'approved', 'rejected'
-    assigned_to: Optional[List[str]] = None
+    assigned_to: Optional[List[int]] = None
     lead_comments: Optional[str] = None
     reviewer_comments: Optional[str] = None
     ai_test_results: Optional[AITestResults] = None
-    files: Optional[List[Dict[str, str]]] = None
+    manual_tests: Optional[List[Dict[str, Any]]] = None

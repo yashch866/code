@@ -2,51 +2,68 @@
 
 ## Entity Relationship Diagram
 
-```
-                    ┌─────────────────────┐
-                    │       USERS         │
-                    ├─────────────────────┤
-                    │ id (PK) AUTO_INC   │
-                    │ username UNIQUE     │
-                    │ password           │
-                    │ name               │
-                    │ email UNIQUE       │
-                    └──────────┬──────────┘
-                               │
-                               │ 1
-                               │
-         ┌─────────────────────┼─────────────────┐
-         │                     │                 │
-         │ *                   │ *               │
-         │                     │                 │
-┌────────┴────────────┐ ┌──────┴─────────────┐
-│  PROJECT_MEMBERS    │ │   SUBMISSIONS       │
-├─────────────────────┤ ├───────────────────┤
-│ id (PK) AUTO_INC   │ │ id (PK) AUTO_INC  │
-│ user_id (FK)       │ │ project_id (FK)    │
-│ project_id (FK)    │ │ developer_id (FK)  │
-│ role               │ │ code TEXT          │
-│  ('developer',     │ │ description TEXT   │
-│   'lead',          │ │ submitted_date     │
-│   'reviewer')      │ │ status            │
-└─────────┬──────────┘ └──────────┬────────┘
-          │                       │
-          │ *                     │ 1
-          │                       │
-┌─────────┴──────────┐           │
-│     PROJECTS       │           │
-├──────────────────┤           │
-│ id (PK) AUTO_INC │           │
-│ name             │           │ *
-│ description      │  ┌────────┴──────────┐
-│ creator_id (FK)  │  │   MANUAL_TESTS    │
-└──────────────────┘  ├─────────────────┤
-                      │ id (PK) AUTO_INC │
-                      │ submission_id FK │
-                      │ name            │
-                      │ status          │
-                      │ description     │
-                      └─────────────────┘
+```mermaid
+erDiagram
+    USERS ||--o{ PROJECT_MEMBERS : "has roles in"
+    USERS ||--o{ PROJECTS : "creates"
+    USERS ||--o{ SUBMISSIONS : "creates"
+    PROJECTS ||--o{ PROJECT_MEMBERS : "has members"
+    PROJECTS ||--o{ SUBMISSIONS : "contains"
+    SUBMISSIONS ||--o{ MANUAL_TESTS : "has"
+    SUBMISSIONS ||--o{ AI_TEST_RESULTS : "has"
+
+    USERS {
+        int id PK "AUTO_INCREMENT"
+        varchar username UK "UNIQUE"
+        varchar password "NOT NULL"
+        varchar name "NOT NULL"
+        varchar email UK "UNIQUE"
+    }
+
+    PROJECTS {
+        int id PK "AUTO_INCREMENT"
+        varchar name "NOT NULL"
+        text description
+        int creator_id FK "-> USERS.id"
+    }
+
+    PROJECT_MEMBERS {
+        int id PK "AUTO_INCREMENT"
+        int user_id FK "-> USERS.id"
+        int project_id FK "-> PROJECTS.id"
+        varchar role "NOT NULL"
+    }
+
+    SUBMISSIONS {
+        int id PK "AUTO_INCREMENT"
+        int project_id FK "-> PROJECTS.id"
+        int developer_id FK "-> USERS.id"
+        text code
+        text description
+        datetime submitted_date "DEFAULT NOW"
+        varchar status
+    }
+
+    MANUAL_TESTS {
+        int id PK "AUTO_INCREMENT"
+        int submission_id FK "-> SUBMISSIONS.id"
+        varchar name "NOT NULL"
+        varchar status
+        text description
+    }
+
+    AI_TEST_RESULTS {
+        int id PK "AUTO_INCREMENT"
+        int submission_id FK "-> SUBMISSIONS.id"
+        text function_code
+        varchar test_name
+        text test_code
+        text expected_output
+        text actual_output
+        varchar status
+        text error_message
+        datetime created_at "DEFAULT NOW"
+    }
 ```
 
 ## How All Tables Connect

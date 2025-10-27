@@ -464,6 +464,76 @@ async def get_manual_tests(submission_id: int):
         print(f"Error fetching manual tests: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# AI Test Results endpoints
+@app.post("/api/ai-test-results")
+async def create_ai_test_result(request: Request):
+    try:
+        data = await request.json()
+        required_fields = ['submission_id', 'test_name', 'test_code', 'expected_output', 
+                         'actual_output', 'status']
+        
+        # Validate required fields
+        for field in required_fields:
+            if field not in data:
+                raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+
+        with get_db() as (conn, cursor):
+            # Insert into ai_test_results table
+            cursor.execute("""
+                INSERT INTO ai_test_results 
+                (submission_id, test_name, test_code, expected_output, actual_output, status, error_message)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (
+                data['submission_id'],
+                data['test_name'],
+                data['test_code'],
+                data['expected_output'],
+                data['actual_output'],
+                data['status'],
+                data.get('error_message', None)
+            ))
+            
+            conn.commit()
+            return {"message": "AI test result added successfully"}
+            
+    except Exception as e:
+        print(f"Error creating AI test result: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/submissions/{submission_id}/ai-test-results")
+async def get_ai_test_results(submission_id: int):
+    try:
+        with get_db() as (conn, cursor):
+            # Get all test results for this submission
+            cursor.execute("""
+                SELECT * FROM ai_test_results
+                WHERE submission_id = %s
+            """, (submission_id,))
+            test_results = cursor.fetchall()
+            
+            # Calculate summary statistics
+            total_tests = len(test_results)
+            passed_tests = sum(1 for test in test_results if test['status'] == 'passed')
+            
+            return {
+                'total': total_tests,
+                'passed': passed_tests,
+                'failed': total_tests - passed_tests,
+                'coverage': 0,  # This would need to be calculated separately
+                'issues': [],   # This would need additional logic to determine issues
+                'tests': [{
+                    'test_name': test['test_name'],
+                    'test_code': test['test_code'],
+                    'expected_output': test['expected_output'],
+                    'actual_output': test['actual_output'],
+                    'status': test['status'],
+                    'error_message': test['error_message']
+                } for test in test_results]
+            }
+    except Exception as e:
+        print(f"Error fetching AI test results: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # User endpoints
 @app.get("/api/users")
 async def get_users():
