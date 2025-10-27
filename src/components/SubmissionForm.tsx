@@ -119,20 +119,8 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
     try {
       const codeToTest = submissionType === 'code' ? formData.code : files.map(f => f.content).join('\n');
       
-      // Call the real TEST10.py endpoint
-      const response = await fetch('http://localhost:8000/api/run-ai-tests', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ code: codeToTest }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to run AI tests');
-      }
-
-      const testResults = await response.json();
+      // Call the real TEST10.py endpoint through our API service
+      const testResults = await aiTestsApi.runTests(codeToTest);
       
       // Calculate summary statistics
       const total = testResults.length;
@@ -160,6 +148,11 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
 
       setAITestResults(formattedResults);
       setAiDetailedResults(testResults);
+      setAICodeAnalysis({
+        securityScore: Math.round((passed / total) * 100),
+        performanceScore: Math.round((passed / total) * 100),
+        maintainabilityScore: Math.round((passed / total) * 100)
+      });
 
       toast.success('AI automated tests completed!', {
         description: `${passed}/${total} tests passed. Click View Results for details.`,

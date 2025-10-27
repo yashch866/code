@@ -12,6 +12,7 @@ type AITestResultsPageProps = {
     actual_output: string;
     status: string;
     error_message?: string;
+    description?: string;
   }[];
   onBack: () => void;
 };
@@ -67,6 +68,12 @@ export function AITestResultsPage({ aiTestResults, onBack }: AITestResultsPagePr
                   <pre className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg overflow-x-auto text-red-600 dark:text-red-400">
                     <code>{test.error_message}</code>
                   </pre>
+                </div>
+              )}
+              {test.description && (
+                <div>
+                  <h4 className="font-semibold mb-2">Description:</h4>
+                  <p className="text-muted-foreground">{test.description}</p>
                 </div>
               )}
             </CardContent>
