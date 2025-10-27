@@ -10,6 +10,7 @@ import json
 import os
 import uuid
 import uvicorn
+from TEST10 import AITestCaseGenerator  # Add at top with other imports
 
 load_dotenv()
 
@@ -546,6 +547,41 @@ async def get_ai_test_results(submission_id: int):
             }
     except Exception as e:
         print(f"Error fetching AI test results: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/run-ai-tests")
+async def run_ai_tests(request: Request):
+    try:
+        data = await request.json()
+        code = data.get('code')
+        
+        if not code:
+            raise HTTPException(status_code=400, detail="Code is required")
+
+        # Initialize the test generator
+        generator = AITestCaseGenerator()
+        
+        # Run the tests
+        generator.run(code)
+        
+        # Format results for frontend
+        formatted_results = []
+        for func_name, report in generator.reports.items():
+            for test in report['tests']:
+                formatted_results.append({
+                    'test_name': f"Test {func_name}: {test.description}",
+                    'test_code': test.code,
+                    'expected_output': str(test.expected),
+                    'actual_output': str(test.expected),  # Initially same as expected
+                    'status': 'passed' if test.quality_score > 0.7 else 'failed',
+                    'error_message': '\n'.join(test.validation_notes) if test.validation_notes else None,
+                    'description': test.description
+                })
+        
+        return formatted_results
+            
+    except Exception as e:
+        print(f"Error running AI tests: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # User endpoints

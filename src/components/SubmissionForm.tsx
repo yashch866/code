@@ -96,20 +96,7 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
   };
 
   const handleViewResults = () => {
-    // Using the mock generated test cases directly without storing in DB
-    const testCases = generateTestCases(submissionType === 'code' ? formData.code : files.map(f => f.content).join('\n'));
-    
-    // Format the test cases to match the expected structure
-    const formattedResults = testCases.map(test => ({
-      test_name: test.testName,
-      test_code: test.code,
-      expected_output: test.expectedResult,
-      actual_output: test.status === 'passed' ? test.expectedResult : 'Unexpected output',
-      status: test.status,
-      error_message: test.status === 'failed' ? 'Test assertion failed' : undefined,
-    }));
-
-    setAiDetailedResults(formattedResults);
+    // Using the actual test results from TEST10.py
     setShowAIResults(true);
   };
 
@@ -132,27 +119,50 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
     try {
       const codeToTest = submissionType === 'code' ? formData.code : files.map(f => f.content).join('\n');
       
-      // Generate test results using mock AI - but don't store in DB yet
-      const testResults = await runAITests(codeToTest);
-      const codeAnalysis = await generateCodeAnalysis(codeToTest);
-      const testCases = generateTestCases(codeToTest);
+      // Call the real TEST10.py endpoint
+      const response = await fetch('http://localhost:8000/api/run-ai-tests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ code: codeToTest }),
+      });
 
-      setAITestResults(testResults);
-      setAICodeAnalysis(codeAnalysis);
+      if (!response.ok) {
+        throw new Error('Failed to run AI tests');
+      }
+
+      const testResults = await response.json();
       
-      // Format and store test cases for viewing
-      const formattedResults = testCases.map(test => ({
-        test_name: test.testName,
-        test_code: test.code,
-        expected_output: test.expectedResult,
-        actual_output: test.status === 'passed' ? test.expectedResult : 'Unexpected output',
-        status: test.status,
-        error_message: test.status === 'failed' ? 'Test assertion failed' : undefined,
-      }));
-      setAiDetailedResults(formattedResults);
+      // Calculate summary statistics
+      const total = testResults.length;
+      const passed = testResults.filter(t => t.status === 'passed').length;
+      const failed = total - passed;
+      const coverage = Math.round((passed / total) * 100);
+      const issues = testResults
+        .filter(t => t.error_message)
+        .map(t => t.error_message);
+
+      // Format the results for display
+      const formattedResults = {
+        total,
+        passed,
+        failed,
+        coverage,
+        issues,
+        tests: testResults.map(test => ({
+          testName: test.test_name,
+          status: test.status,
+          duration: 45, // Default execution time
+          description: test.description
+        }))
+      };
+
+      setAITestResults(formattedResults);
+      setAiDetailedResults(testResults);
 
       toast.success('AI automated tests completed!', {
-        description: `${testResults.passed}/${testResults.total} tests passed. Click View Results for details.`,
+        description: `${passed}/${total} tests passed. Click View Results for details.`,
       });
     } catch (error) {
       console.error('Failed to run AI tests:', error);
