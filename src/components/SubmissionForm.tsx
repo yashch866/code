@@ -186,8 +186,8 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
     }
 
     try {
-      // Create submission first to get the submission ID
-      const response = await submissionsApi.create({
+      // Prepare all data in a single submission
+      const submissionData = {
         project_id: formData.projectId,
         developer_id: currentUser.id.toString(),
         code: formData.code,
@@ -196,25 +196,19 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
           name: test.name,
           description: test.description,
           status: test.status
-        }))
-      });
+        })),
+        ai_test_results: aiDetailedResults ? aiDetailedResults.map(test => ({
+          test_name: String(test.test_name).slice(0, 255),
+          test_code: String(test.test_code),
+          expected_output: String(test.expected_output),
+          actual_output: String(test.actual_output),
+          status: String(test.status),
+          error_message: test.error_message ? String(test.error_message) : undefined
+        })) : []
+      };
 
-      const submissionId = response.data.id;
-
-      // Store AI test results if they exist
-      if (aiDetailedResults && aiDetailedResults.length > 0) {
-        for (const test of aiDetailedResults) {
-          await aiTestsApi.create({
-            submission_id: submissionId,
-            test_name: test.test_name,
-            test_code: test.test_code,
-            expected_output: test.expected_output,
-            actual_output: test.actual_output,
-            status: test.status,
-            error_message: test.error_message
-          });
-        }
-      }
+      // Create submission with all data in one request
+      const response = await submissionsApi.create(submissionData);
 
       // Get project name for onSubmit
       const project = projects.find(p => p.id.toString() === formData.projectId);
@@ -238,7 +232,7 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
       setManualTests([]);
       setAITestResults(null);
       setAICodeAnalysis(null);
-      setAiDetailedResults([]); // Clear detailed results too
+      setAiDetailedResults([]);
       
       toast.success('Code and tests submitted successfully!');
     } catch (error) {

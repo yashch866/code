@@ -326,6 +326,23 @@ async def create_submission(request: Request):
                             INSERT INTO manual_tests (submission_id, name, status, description)
                             VALUES (%s, %s, %s, %s)
                         """, (submission_id, test['name'], test['status'], test['description']))
+
+                # Insert AI test results if provided
+                if 'ai_test_results' in data and data['ai_test_results']:
+                    for test in data['ai_test_results']:
+                        cursor.execute("""
+                            INSERT INTO ai_test_results 
+                            (submission_id, test_name, test_code, expected_output, actual_output, status, error_message)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """, (
+                            submission_id,
+                            str(test['test_name'])[:255],  # Limit length
+                            str(test['test_code']),
+                            str(test['expected_output']),
+                            str(test['actual_output']),
+                            str(test['status']),
+                            str(test['error_message']) if test.get('error_message') else None
+                        ))
                 
                 # Commit transaction
                 conn.commit()
@@ -335,7 +352,8 @@ async def create_submission(request: Request):
             except Exception as e:
                 # Rollback on error
                 conn.rollback()
-                raise e
+                print(f"Database error: {str(e)}")
+                raise HTTPException(status_code=500, detail=str(e))
             
     except HTTPException as he:
         raise he
@@ -495,23 +513,42 @@ async def create_ai_test_result(request: Request):
                 raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
 
         with get_db() as (conn, cursor):
-            # Insert into ai_test_results table
-            cursor.execute("""
-                INSERT INTO ai_test_results 
-                (submission_id, test_name, test_code, expected_output, actual_output, status, error_message)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (
-                data['submission_id'],
-                data['test_name'],
-                data['test_code'],
-                data['expected_output'],
-                data['actual_output'],
-                data['status'],
-                data.get('error_message', None)
-            ))
-            
-            conn.commit()
-            return {"message": "AI test result added successfully"}
+            try:
+                # Start transaction
+                conn.start_transaction()
+
+                # Ensure data is properly formatted as strings
+                test_name = str(data['test_name'])[:255]  # Limit length to avoid DB issues
+                test_code = str(data['test_code'])
+                expected_output = str(data['expected_output'])
+                actual_output = str(data['actual_output'])
+                status = str(data['status'])
+                error_message = str(data.get('error_message', '')) if data.get('error_message') else None
+
+                # Insert into ai_test_results table
+                cursor.execute("""
+                    INSERT INTO ai_test_results 
+                    (submission_id, test_name, test_code, expected_output, actual_output, status, error_message)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    data['submission_id'],
+                    test_name,
+                    test_code,
+                    expected_output,
+                    actual_output,
+                    status,
+                    error_message
+                ))
+                
+                # Commit transaction
+                conn.commit()
+                return {"message": "AI test result added successfully"}
+                
+            except Exception as e:
+                # Rollback on error
+                conn.rollback()
+                print(f"Database error: {str(e)}")
+                raise HTTPException(status_code=500, detail=str(e))
             
     except Exception as e:
         print(f"Error creating AI test result: {e}")
@@ -547,6 +584,46 @@ async def get_ai_test_results(submission_id: int):
             }
     except Exception as e:
         print(f"Error fetching AI test results: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/submissions/{submission_id}/function-tests")
+async def get_function_test_results(submission_id: int):
+    try:
+        with get_db() as (conn, cursor):
+            # Get all test results for this submission
+            cursor.execute("""
+                SELECT * FROM ai_test_results
+                WHERE submission_id = %s
+            """, (submission_id,))
+            test_results = cursor.fetchall()
+            
+            # Group tests by function name
+            functions = {}
+            for test in test_results:
+                # Extract function name from test name (format: "Test function_name: description")
+                function_name = test['test_name'].split(':')[0].replace('Test ', '').strip()
+                
+                # Initialize function entry if not exists
+                if function_name not in functions:
+                    functions[function_name] = {
+                        'code': test['test_code'].split('result =')[0].strip(),  # Get function code from first test
+                        'tests': []
+                    }
+                
+                # Add test details
+                functions[function_name]['tests'].append({
+                    'name': test['test_name'],
+                    'code': test['test_code'],
+                    'expected_output': test['expected_output'],
+                    'actual_output': test['actual_output'],
+                    'status': test['status'],
+                    'description': test.get('description', test['test_name'].split(':')[1].strip() if ':' in test['test_name'] else '')
+                })
+            
+            return {'functions': functions}
+            
+    except Exception as e:
+        print(f"Error fetching function test results: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/run-ai-tests")
