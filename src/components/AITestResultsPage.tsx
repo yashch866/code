@@ -12,6 +12,8 @@ interface TestCase {
   actual_output: string;
   status: string;
   description?: string;
+  error_message?: string;
+  quality_score?: number;
 }
 
 interface AITestResultsPageProps {
@@ -91,7 +93,7 @@ export const AITestResultsPage: React.FC<AITestResultsPageProps> = ({ aiTestResu
                             ? 'bg-green-500' 
                             : 'bg-red-500'
                         }`} />
-                        {test.test_name}
+                        {test.test_name.split(':')[1]?.trim() || test.test_name}
                       </div>
                     </AccordionTrigger>
                     <AccordionContent className="px-4 pb-4">
@@ -120,6 +122,20 @@ export const AITestResultsPage: React.FC<AITestResultsPageProps> = ({ aiTestResu
                           <div>
                             <div className="font-medium mb-2">Description:</div>
                             <p className="text-slate-600 dark:text-slate-300">{test.description}</p>
+                          </div>
+                        )}
+                        {test.quality_score !== undefined && (
+                          <div>
+                            <div className="font-medium mb-2">Quality Score:</div>
+                            <p className="text-slate-600 dark:text-slate-300">{(test.quality_score * 100).toFixed(1)}%</p>
+                          </div>
+                        )}
+                        {test.error_message && (
+                          <div>
+                            <div className="font-medium mb-2 text-red-600">Error Message:</div>
+                            <pre className="bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 p-3 rounded-lg overflow-x-auto border border-red-200 dark:border-red-800">
+                              <code>{test.error_message}</code>
+                            </pre>
                           </div>
                         )}
                       </div>

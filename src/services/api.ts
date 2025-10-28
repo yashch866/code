@@ -149,19 +149,21 @@ export const aiTestsApi = {
   getBySubmission: (submissionId: number) => 
     api.get(`/api/submissions/${submissionId}/ai-test-results`),
   runTests: async (code: string) => {
-    const response = await fetch('http://localhost:8000/api/run-ai-tests', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ code }),
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to run AI tests');
+    try {
+      const response = await api.post('/api/run-ai-tests', {
+        code,
+        stream: false // Disable streaming to ensure proper JSON response
+      });
+      
+      if (!response.data) {
+        throw new Error('No data received from AI tests');
+      }
+      
+      return response.data;
+    } catch (error) {
+      console.error('AI tests error:', error);
+      throw new Error('Failed to run AI tests: ' + (error.response?.data?.message || error.message));
     }
-
-    return response.json();
   }
 };
 

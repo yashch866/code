@@ -119,9 +119,13 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
     try {
       const codeToTest = submissionType === 'code' ? formData.code : files.map(f => f.content).join('\n');
       
-      // Call the real TEST10.py endpoint through our API service
+      // Call the API service
       const testResults = await aiTestsApi.runTests(codeToTest);
       
+      if (!Array.isArray(testResults)) {
+        throw new Error('Invalid test results format');
+      }
+
       // Calculate summary statistics
       const total = testResults.length;
       const passed = testResults.filter(t => t.status === 'passed').length;
@@ -141,7 +145,7 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
         tests: testResults.map(test => ({
           testName: test.test_name,
           status: test.status,
-          duration: 45, // Default execution time
+          duration: test.duration || 45,
           description: test.description
         }))
       };
@@ -162,6 +166,10 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
       toast.error('Failed to run AI tests', {
         description: error instanceof Error ? error.message : 'An unexpected error occurred',
       });
+      // Clear any partial results
+      setAITestResults(null);
+      setAiDetailedResults([]);
+      setAICodeAnalysis(null);
     } finally {
       setIsRunningAITests(false);
     }
@@ -569,7 +577,7 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
                 )}
               </Button>
 
-              {aiTestResults && aiCodeAnalysis && (
+              {aiDetailedResults && aiDetailedResults.length > 0 && aiTestResults && aiCodeAnalysis && (
                 <div className="space-y-4 pt-4 border-t">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -577,7 +585,7 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
                       <h4>AI Test Results</h4>
                     </div>
                     <Button 
-                      onClick={handleViewResults}
+                      onClick={() => setShowAIResults(true)}
                       variant="outline"
                       className="gap-2"
                     >

@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from typing import Optional, List, Dict
 from datetime import datetime
@@ -631,6 +632,7 @@ async def run_ai_tests(request: Request):
     try:
         data = await request.json()
         code = data.get('code')
+        stream = data.get('stream', False)
         
         if not code:
             raise HTTPException(status_code=400, detail="Code is required")
@@ -638,22 +640,20 @@ async def run_ai_tests(request: Request):
         # Initialize the test generator
         generator = AITestCaseGenerator()
         
-        # Run the tests
-        generator.run(code)
+        # Run tests with streaming output
+        def generate_stream():
+            for line in generator.run(code):
+                if isinstance(line, dict):  # Test result
+                    yield json.dumps(line) + '\n'
+                else:  # Progress message
+                    yield json.dumps({"message": line}) + '\n'
         
-        # Format results for frontend
-        formatted_results = []
-        for func_name, report in generator.reports.items():
-            for test in report['tests']:
-                formatted_results.append({
-                    'test_name': f"Test {func_name}: {test.description}",
-                    'test_code': test.code,
-                    'expected_output': str(test.expected),
-                    'actual_output': str(test.expected),  # Initially same as expected
-                    'status': 'passed' if test.quality_score > 0.7 else 'failed',
-                    'error_message': '\n'.join(test.validation_notes) if test.validation_notes else None,
-                    'description': test.description
-                })
+        if stream:
+            return StreamingResponse(generate_stream(), media_type="text/event-stream")
+        
+        # Non-streaming response - Run tests and return all results at once
+        results = list(generator.run(code))
+        formatted_results = [r for r in results if isinstance(r, dict)]
         
         return formatted_results
             
