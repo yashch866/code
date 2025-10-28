@@ -1,0 +1,12 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Node modules and build output
+node_modules/
+dist/
+.vite/
+.env
+
+# System files
+.DS_Store
