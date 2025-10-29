@@ -1,442 +1,233 @@
-import React, { useState } from 'react';
-import { ManualTest } from '../types';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
-import { Badge } from './ui/badge';
+import { RadioGroup, RadioGroupItem } from './ui/radio-group';
+import { ManualTest } from '../types';
+import { PlayCircle, CheckCircle, XCircle } from 'lucide-react';
 import { Alert, AlertDescription } from './ui/alert';
-import { PlayCircle, CheckCircle2, XCircle, Loader2, AlertCircle } from 'lucide-react';
-import { toast } from 'sonner';
 
-interface ExtendedManualTest extends ManualTest {
-  testCode?: string;
-  customInput?: string;
-  expectedOutput?: string;
-  actualOutput?: string;
-}
-
-type ManualTestDialogProps = {
+interface ManualTestDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (test: ManualTest) => void;
-  editTest?: ExtendedManualTest | null;
-};
+  editTest?: ManualTest | null;
+}
 
 export function ManualTestDialog({ open, onOpenChange, onSubmit, editTest }: ManualTestDialogProps) {
-  const [testData, setTestData] = useState<Partial<ExtendedManualTest>>({
-    name: editTest?.name || '',
-    description: editTest?.description || '',
-    testCode: editTest?.testCode || '',
-    customInput: editTest?.customInput || '',
-    expectedOutput: editTest?.expectedOutput || '',
-    status: editTest?.status || 'pending',
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    input: '',
+    expectedOutput: '',
+    actualOutput: '',
   });
-  const [isRunning, setIsRunning] = useState(false);
-  const [testResult, setTestResult] = useState<{
-    status: 'passed' | 'failed' | null;
-    actualOutput: string;
-  } | null>(editTest?.actualOutput ? { status: editTest.status, actualOutput: editTest.actualOutput } : null);
+  const [status, setStatus] = useState<'passed' | 'failed'>('passed');
+  const [hasRun, setHasRun] = useState(false);
 
-  const executeCode = async () => {
-    if (!testData.testCode) {
-      toast.error('Please add test code first');
-      return;
+  useEffect(() => {
+    if (editTest) {
+      setFormData({
+        name: editTest.name,
+        description: editTest.description,
+        input: editTest.input || '',
+        expectedOutput: editTest.expectedOutput || '',
+        actualOutput: editTest.actualOutput || '',
+      });
+      setStatus(editTest.status);
+      setHasRun(true);
+    } else {
+      setFormData({
+        name: '',
+        description: '',
+        input: '',
+        expectedOutput: '',
+        actualOutput: '',
+      });
+      setStatus('passed');
+      setHasRun(false);
     }
+  }, [editTest, open]);
 
-    if (!testData.expectedOutput) {
-      toast.error('Please add expected output');
-      return;
-    }
-
-    setIsRunning(true);
-    setTestResult(null);
-
-    // Simulate code execution
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    try {
-      let output = '';
-      let status: 'passed' | 'failed' = 'passed';
-
-      if (testData.customInput) {
-        output = mockExecuteCode(testData.testCode!, testData.customInput!);
-
-        const normalizedOutput = output.trim().toLowerCase();
-        const normalizedExpected = testData.expectedOutput!.trim().toLowerCase();
-
-        status = normalizedOutput === normalizedExpected ? 'passed' : 'failed';
-      } else {
-        output = mockExecuteCode(testData.testCode!, '');
-        status = 'passed';
-      }
-
-      setTestResult({ status, actualOutput: output });
-      setTestData(prev => ({ ...prev, status, actualOutput: output }));
-
-      if (status === 'passed') {
-        toast.success('Test passed successfully!');
-      } else {
-        toast.error('Test failed - output does not match expected result');
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Code execution failed';
-      setTestResult({ status: 'failed', actualOutput: errorMessage });
-      setTestData(prev => ({ ...prev, status: 'failed', actualOutput: errorMessage }));
-      toast.error('Code execution error');
-    } finally {
-      setIsRunning(false);
-    }
+  const handleRunTest = () => {
+    // Simulate running the test
+    const testPassed = formData.actualOutput.trim() === formData.expectedOutput.trim();
+    setStatus(testPassed ? 'passed' : 'failed');
+    setHasRun(true);
   };
 
-  const mockExecuteCode = (code: string, input: string): string => {
-    try {
-      if (input.match(/^\d+\s*\+\s*\d+$/)) {
-        const [a, b] = input.split('+').map(n => parseInt(n.trim()));
-        return (a + b).toString();
-      }
-
-      if (input.match(/^\d+\s*-\s*\d+$/)) {
-        const [a, b] = input.split('-').map(n => parseInt(n.trim()));
-        return (a - b).toString();
-      }
-
-      if (input.match(/^\d+\s*\*\s*\d+$/)) {
-        const [a, b] = input.split('*').map(n => parseInt(n.trim()));
-        return (a * b).toString();
-      }
-
-      if (input.match(/^\d+\s*\/\s*\d+$/)) {
-        const [a, b] = input.split('/').map(n => parseInt(n.trim()));
-        if (b === 0) return 'Error: Division by zero';
-        return (a / b).toString();
-      }
-
-      if (code.toLowerCase().includes('uppercase') || code.toLowerCase().includes('toupper')) {
-        return input.toUpperCase();
-      }
-
-      if (code.toLowerCase().includes('lowercase') || code.toLowerCase().includes('tolower')) {
-        return input.toLowerCase();
-      }
-
-      if (code.toLowerCase().includes('reverse')) {
-        return input.split('').reverse().join('');
-      }
-
-      if (code.toLowerCase().includes('length')) {
-        return input.length.toString();
-      }
-
-      if (input && !isNaN(Number(input))) {
-        const num = Number(input);
-
-        if (code.toLowerCase().includes('square')) {
-          return (num * num).toString();
-        }
-
-        if (code.toLowerCase().includes('double') || code.toLowerCase().includes('*2')) {
-          return (num * 2).toString();
-        }
-
-        if (code.toLowerCase().includes('increment') || code.toLowerCase().includes('+1')) {
-          return (num + 1).toString();
-        }
-      }
-
-      return input || 'Code executed successfully';
-    } catch (error) {
-      throw new Error('Execution error: Invalid code or input');
-    }
-  };
-
-  const handleSubmit = () => {
-    if (!testData.name?.trim()) {
-      toast.error('Please enter a test name');
-      return;
-    }
-
-    if (!testData.description?.trim()) {
-      toast.error('Please enter a test description');
-      return;
-    }
-
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
     const test: ManualTest = {
       id: editTest?.id || Date.now().toString(),
-      name: testData.name!,
-      description: testData.description!,
-      status: testData.status as 'passed' | 'failed',
-      executedAt: new Date().toISOString()
+      name: formData.name,
+      description: formData.description,
+      status,
+      input: formData.input,
+      expectedOutput: formData.expectedOutput,
+      actualOutput: formData.actualOutput,
     };
 
     onSubmit(test);
     onOpenChange(false);
-
-    setTestData({
+    
+    // Reset form
+    setFormData({
       name: '',
       description: '',
-      testCode: '',
-      customInput: '',
+      input: '',
       expectedOutput: '',
-      status: 'pending',
+      actualOutput: '',
     });
-    setTestResult(null);
-
-    toast.success(editTest ? 'Test updated successfully!' : 'Test added successfully!');
+    setStatus('passed');
+    setHasRun(false);
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="fixed inset-0 w-full h-full max-w-none max-h-none p-8 m-0 rounded-none border-0">
-        <DialogHeader className="pb-6 border-b">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-[#F46F50]/10">
-              <PlayCircle className="size-6 text-[#F46F50]" />
-            </div>
-            <div>
-              <DialogTitle className="text-2xl">{editTest ? 'Edit Manual Test' : 'Create New Manual Test'}</DialogTitle>
-              <DialogDescription className="text-base mt-1">
-                Build interactive tests with custom inputs and automated validation
-              </DialogDescription>
-            </div>
-          </div>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{editTest ? 'Edit Manual Test' : 'Add Manual Test'}</DialogTitle>
+          <DialogDescription>
+            Create a manual test case with inputs and expected outputs
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto h-[calc(100vh-140px)]">
-          <div className="container mx-auto max-w-[1800px] py-6 px-4">
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="space-y-4 p-6 rounded-lg border-2 bg-gradient-to-br from-slate-50/50 to-slate-100/30 dark:from-slate-900/30 dark:to-slate-800/20">
-                  <h3 className="flex items-center gap-2 text-lg">
-                    <span>📝</span> Test Details
-                  </h3>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="test-name">Test Name *</Label>
+            <Input
+              id="test-name"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="e.g., Test Addition Function"
+              required
+            />
+          </div>
 
-                  <div className="grid grid-cols-1 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="test-name" className="text-base">Test Name *</Label>
-                      <Input
-                        id="test-name"
-                        value={testData.name}
-                        onChange={(e) => setTestData({ ...testData, name: e.target.value })}
-                        placeholder="e.g., Test Addition Function"
-                        className="h-11"
-                      />
-                    </div>
+          <div className="space-y-2">
+            <Label htmlFor="test-description">Description *</Label>
+            <Textarea
+              id="test-description"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Describe what this test validates"
+              rows={3}
+              required
+            />
+          </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="test-description" className="text-base">Test Description *</Label>
-                      <Textarea
-                        id="test-description"
-                        value={testData.description}
-                        onChange={(e) => setTestData({ ...testData, description: e.target.value })}
-                        placeholder="e.g., Verify that the addition function correctly adds two numbers"
-                        rows={3}
-                        className="resize-none"
-                      />
-                    </div>
-                  </div>
-                </div>
+          <div className="space-y-2">
+                        <Label htmlFor={`test-code-${test.id}`}>Test Code *</Label>
+                        <Textarea
+                          id={`test-code-${test.id}`}
+                          value={test.testCode}
+                          onChange={(e) => updateManualTest(test.id, { testCode: e.target.value })}
+                          placeholder="// Paste your code here...&#10;function add(a, b) {&#10;  return a + b;&#10;}"
+                          rows={8}
+                          className="font-mono text-sm"
+                          required
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          💡 Tip: Write or paste the code you want to test
+                        </p>
+           </div>
 
-                <div className="space-y-4 p-6 rounded-lg border-2 bg-gradient-to-br from-purple-50/30 to-blue-50/30 dark:from-purple-950/20 dark:to-blue-950/20">
-                  <h3 className="flex items-center gap-2 text-lg">
-                    <span>💻</span> Test Code
-                  </h3>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="test-code" className="text-base">Code to Test *</Label>
-                    <Textarea
-                      id="test-code"
-                      value={testData.testCode}
-                      onChange={(e) => setTestData({ ...testData, testCode: e.target.value })}
-                      placeholder="// Paste your code here...&#10;function add(a, b) {&#10;  return a + b;&#10;}"
-                      rows={12}
-                      className="font-mono text-sm bg-slate-950 text-slate-50 dark:bg-slate-950 dark:text-slate-50 border-slate-700 focus:border-slate-500 resize-none"
-                    />
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      💡 Tip: Write or paste the code you want to test
-                    </p>
-                  </div>
-                </div>
-              </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="test-input">Test Input</Label>
+              <Input
+                id="test-input"
+                value={formData.input}
+                onChange={(e) => setFormData({ ...formData, input: e.target.value })}
+                placeholder="e.g., 3, 5"
+              />
+            </div>
 
-              {/* Input & Expected Output Section */}
-              <div className="p-6 border-2 rounded-lg bg-gradient-to-br from-green-50/30 to-emerald-50/30 dark:from-green-950/20 dark:to-emerald-950/20">
-                <h3 className="flex items-center gap-2 text-lg mb-4">
-                  <span>⚙️</span> Input & Expected Output
-                </h3>
-                
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="custom-input" className="text-base flex items-center gap-2">
-                      <span>📥</span> Custom Input <span className="text-xs text-muted-foreground">(Optional)</span>
-                    </Label>
-                    <Textarea
-                      id="custom-input"
-                      value={testData.customInput}
-                      onChange={(e) => setTestData({ ...testData, customInput: e.target.value })}
-                      placeholder="e.g., 3+5&#10;or&#10;1323243"
-                      rows={4}
-                      className="font-mono text-sm resize-none w-full"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Enter the test input (e.g., function parameters or test data)
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="expected-output" className="text-base flex items-center gap-2">
-                      <span>✅</span> Expected Output *
-                    </Label>
-                    <Textarea
-                      id="expected-output"
-                      value={testData.expectedOutput}
-                      onChange={(e) => setTestData({ ...testData, expectedOutput: e.target.value })}
-                      placeholder="e.g., 8"
-                      rows={4}
-                      className="font-mono text-sm resize-none w-full"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Enter what your code should return for the given input
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-4">
-                <Button
-                  type="button"
-                  onClick={executeCode}
-                  disabled={isRunning || !testData.testCode}
-                  className="gap-2 h-12 px-8 bg-[#F46F50] hover:bg-[#F46F50]/90 text-white"
-                  size="lg"
-                >
-                  {isRunning ? (
-                    <>
-                      <Loader2 className="size-5 animate-spin" />
-                      Executing Code...
-                    </>
-                  ) : (
-                    <>
-                      <PlayCircle className="size-5" />
-                      Run Code & Validate
-                    </>
-                  )}
-                </Button>
-              </div>
-
-              {testResult && (
-                <div className="grid grid-cols-2 gap-8">
-                  <Alert className={`p-8 ${
-                    testResult.status === 'passed' 
-                      ? 'border-green-500 bg-green-50 dark:bg-green-950/30' 
-                      : 'border-red-500 bg-red-50 dark:bg-red-950/30'
-                  }`}>
-                    <div className="flex items-start gap-4 p-2">
-                      {testResult.status === 'passed' ? (
-                        <div className="p-2 rounded-full bg-green-100 dark:bg-green-900">
-                          <CheckCircle2 className="size-6 text-green-600 dark:text-green-400" />
-                        </div>
-                      ) : (
-                        <div className="p-2 rounded-full bg-red-100 dark:bg-red-900">
-                          <XCircle className="size-6 text-red-600 dark:text-red-400" />
-                        </div>
-                      )}
-                      <div className="flex-1 space-y-3">
-                        <div className="flex items-center gap-3">
-                          <span className={`text-lg ${testResult.status === 'passed' ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
-                            Test {testResult.status === 'passed' ? 'Passed ✓' : 'Failed ✗'}
-                          </span>
-                          <Badge 
-                            variant={testResult.status === 'passed' ? 'default' : 'destructive'}
-                            className="px-3 py-1"
-                          >
-                            {testResult.status.toUpperCase()}
-                          </Badge>
-                        </div>
-                        
-                        {testData.customInput && (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                              <div className="text-xs text-muted-foreground">Expected Output:</div>
-                              <div className="font-mono text-sm bg-white dark:bg-slate-900 p-3 rounded border">
-                                {testData.expectedOutput}
-                              </div>
-                            </div>
-                            <div className="space-y-1">
-                              <div className="text-xs text-muted-foreground">Actual Output:</div>
-                              <div className={`font-mono text-sm p-3 rounded border ${
-                                testResult.status === 'passed' 
-                                  ? 'bg-green-100 dark:bg-green-900/30 border-green-300 dark:border-green-700' 
-                                  : 'bg-red-100 dark:bg-red-900/30 border-red-300 dark:border-red-700'
-                              }`}>
-                                {testResult.actualOutput}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        
-                        {!testData.customInput && testResult.actualOutput && (
-                          <div className="space-y-1">
-                            <div className="text-xs text-muted-foreground">Output:</div>
-                            <AlertDescription className="font-mono text-sm bg-white dark:bg-slate-900 p-3 rounded border">
-                              {testResult.actualOutput}
-                            </AlertDescription>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </Alert>
-                </div>
-              )}
-
-              {!testResult && (
-                <Alert className="border-blue-300 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-800 p-8">
-                  <AlertCircle className="size-5 text-blue-600 dark:text-blue-400" />
-                  <AlertDescription className="text-sm">
-                    💡 Click "Run Code & Validate" to test your code with the custom input before submitting
-                  </AlertDescription>
-                </Alert>
-              )}
+            <div className="space-y-2">
+              <Label htmlFor="expected-output">Expected Output</Label>
+              <Input
+                id="expected-output"
+                value={formData.expectedOutput}
+                onChange={(e) => setFormData({ ...formData, expectedOutput: e.target.value })}
+                placeholder="e.g., 8"
+              />
             </div>
           </div>
-        </div>
 
-        <div className="fixed bottom-0 left-0 right-0 flex justify-between items-center gap-4 p-6 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-          <p className="text-sm text-muted-foreground">
-            * Required fields
-          </p>
-          <div className="flex gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              onClick={() => {
-                onOpenChange(false);
-                setTestData({
-                  name: '',
-                  description: '',
-                  testCode: '',
-                  customInput: '',
-                  expectedOutput: '',
-                  status: 'pending',
-                });
-                setTestResult(null);
-              }}
-            >
+          <div className="space-y-2">
+            <Label htmlFor="actual-output">Actual Output</Label>
+            <Input
+              id="actual-output"
+              value={formData.actualOutput}
+              onChange={(e) => setFormData({ ...formData, actualOutput: e.target.value })}
+              placeholder="Enter the actual result from running the test"
+            />
+          </div>
+
+          {formData.expectedOutput && formData.actualOutput && (
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                onClick={handleRunTest}
+                variant="outline"
+                className="gap-2"
+              >
+                <PlayCircle className="size-4" />
+                Validate Test
+              </Button>
+            </div>
+          )}
+
+          {hasRun && (
+            <Alert className={status === 'passed' ? 'border-green-500 bg-green-50' : 'border-red-500 bg-red-50'}>
+              <div className="flex items-center gap-2">
+                {status === 'passed' ? (
+                  <>
+                    <CheckCircle className="size-4 text-green-600" />
+                    <AlertDescription className="text-green-800">
+                      Test Passed - Expected output matches actual output
+                    </AlertDescription>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="size-4 text-red-600" />
+                    <AlertDescription className="text-red-800">
+                      Test Failed - Expected output does not match actual output
+                    </AlertDescription>
+                  </>
+                )}
+              </div>
+            </Alert>
+          )}
+
+          <div className="space-y-2">
+            <Label>Test Status *</Label>
+            <RadioGroup value={status} onValueChange={(value: 'passed' | 'failed') => setStatus(value)}>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="passed" id="status-passed" />
+                <Label htmlFor="status-passed" className="cursor-pointer">Passed</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="failed" id="status-failed" />
+                <Label htmlFor="status-failed" className="cursor-pointer">Failed</Label>
+              </div>
+            </RadioGroup>
+          </div>
+
+          <div className="flex gap-2 pt-4">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
               Cancel
             </Button>
-            <Button
-              type="button"
-              onClick={handleSubmit}
-              className="gap-2 bg-[#F46F50] hover:bg-[#F46F50]/90 text-white px-8"
-              size="lg"
-            >
-              <CheckCircle2 className="size-5" />
+            <Button type="submit" className="flex-1 bg-[#F46F50] hover:bg-[#e05a3d]">
               {editTest ? 'Update Test' : 'Add Test'}
             </Button>
           </div>
-        </div>
+        </form>
       </DialogContent>
     </Dialog>
   );

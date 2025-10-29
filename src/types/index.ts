@@ -11,6 +11,11 @@ export type ManualTest = {
   description: string;
   status: 'passed' | 'failed';
   executedAt?: string;
+  // UI-only fields (not stored in DB)
+  testCode?: string;
+  input?: string;
+  expectedOutput?: string;
+  actualOutput?: string;
 };
 
 export type SubmissionStatus = 'submitted' | 'lead-review' | 'ai-testing' | 'user-review' | 'approved' | 'rejected';

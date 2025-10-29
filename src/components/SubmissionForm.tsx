@@ -15,7 +15,6 @@ import { runAITests, generateCodeAnalysis, generateTestCases } from '../tests/mo
 import { toast } from 'sonner';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { cn } from './ui/utils';
-import { ManualTestDialog } from './ManualTestDialog';
 import { submissionsApi, aiTestsApi } from '../services/api';
 import { AITestResultsPage } from './AITestResultsPage';
 
@@ -33,9 +32,16 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
   });
   const [submissionType, setSubmissionType] = useState<'code' | 'attachments'>('code');
   const [files, setFiles] = useState<FileAttachment[]>([]);
-  const [manualTests, setManualTests] = useState<ManualTest[]>([]);
-  const [testDialogOpen, setTestDialogOpen] = useState(false);
-  const [editingTest, setEditingTest] = useState<ManualTest | null>(null);
+  const [manualTests, setManualTests] = useState<ManualTest[]>([{
+    id: Date.now().toString(),
+    name: '',
+    description: '',
+    status: 'passed',
+    testCode: '',
+    input: '',
+    expectedOutput: '',
+    actualOutput: ''
+  }]);
   const [isRunningAITests, setIsRunningAITests] = useState(false);
   const [aiTestResults, setAITestResults] = useState<Submission['aiTestResults'] | null>(null);
   const [aiCodeAnalysis, setAICodeAnalysis] = useState<AICodeAnalysis | null>(null);
@@ -47,7 +53,6 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
     if (!selectedFiles) return;
 
     Array.from(selectedFiles).forEach((selectedFile: unknown) => {
-      // Type guard to ensure we have a File object
       if (!(selectedFile instanceof File)) return;
       
       const file = selectedFile as File;
@@ -68,7 +73,6 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
       reader.readAsDataURL(file);
     });
     
-    // Reset input
     e.target.value = '';
   };
 
@@ -96,7 +100,6 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
   };
 
   const handleViewResults = () => {
-    // Using the actual test results from TEST10.py
     setShowAIResults(true);
   };
 
@@ -119,14 +122,12 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
     try {
       const codeToTest = submissionType === 'code' ? formData.code : files.map(f => f.content).join('\n');
       
-      // Call the API service
       const testResults = await aiTestsApi.runTests(codeToTest);
       
       if (!Array.isArray(testResults)) {
         throw new Error('Invalid test results format');
       }
 
-      // Calculate summary statistics
       const total = testResults.length;
       const passed = testResults.filter(t => t.status === 'passed').length;
       const failed = total - passed;
@@ -135,7 +136,6 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
         .filter(t => t.error_message)
         .map(t => t.error_message);
 
-      // Format the results for display
       const formattedResults = {
         total,
         passed,
@@ -166,7 +166,6 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
       toast.error('Failed to run AI tests', {
         description: error instanceof Error ? error.message : 'An unexpected error occurred',
       });
-      // Clear any partial results
       setAITestResults(null);
       setAiDetailedResults([]);
       setAICodeAnalysis(null);
@@ -194,7 +193,6 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
     }
 
     try {
-      // Prepare all data in a single submission
       const submissionData = {
         project_id: formData.projectId,
         developer_id: currentUser.id.toString(),
@@ -215,13 +213,10 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
         })) : []
       };
 
-      // Create submission with all data in one request
       const response = await submissionsApi.create(submissionData);
 
-      // Get project name for onSubmit
       const project = projects.find(p => p.id.toString() === formData.projectId);
       
-      // Call the parent onSubmit callback
       onSubmit({
         projectId: formData.projectId,
         projectName: project?.name || 'Unknown Project',
@@ -231,7 +226,6 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
         manualTests: manualTests
       });
       
-      // Reset form
       setFormData({
         projectId: '',
         description: '',
@@ -249,7 +243,54 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
     }
   };
 
-  // Add early return for showing AI results
+  const addNewTest = () => {
+    setManualTests(prev => [...prev, {
+      id: Date.now().toString(),
+      name: '',
+      description: '',
+      status: 'passed',
+      testCode: '',
+      input: '',
+      expectedOutput: '',
+      actualOutput: ''
+    }]);
+  };
+
+  const updateTest = (id: string, updates: Partial<ManualTest>) => {
+    setManualTests(prev => prev.map(test => 
+      test.id === id ? { ...test, ...updates } : test
+    ));
+  };
+
+  const executeTestCode = (code: string, input: string) => {
+    try {
+      const testFunc = new Function('input', `
+        try {
+          ${code}
+          return { success: true, output: eval(input) };
+        } catch (error) {
+          return { success: false, output: error.message };
+        }
+      `);
+      
+      const result = testFunc(input);
+      return result.success ? String(result.output) : `Error: ${result.output}`;
+    } catch (error) {
+      return `Error: ${error.message}`;
+    }
+  };
+
+  const validateTest = (id: string) => {
+    const test = manualTests.find(t => t.id === id);
+    if (test && test.testCode && test.input) {
+      const actualOutput = executeTestCode(test.testCode, test.input);
+      updateTest(id, { 
+        actualOutput, 
+        status: actualOutput.trim() === test.expectedOutput?.trim() ? 'passed' : 'failed' 
+      });
+    }
+  };
+
   if (showAIResults && aiDetailedResults.length > 0) {
     return (
       <AITestResultsPage 
@@ -464,62 +505,125 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
                   type="button" 
                   variant="outline" 
                   size="sm" 
-                  onClick={() => {
-                    setEditingTest(null);
-                    setTestDialogOpen(true);
-                  }} 
+                  onClick={addNewTest}
                   className="gap-2"
                 >
                   <Plus className="size-4" />
-                  Add Test
+                  Add Another Test
                 </Button>
               </div>
 
-              {manualTests.length === 0 ? (
-                <div className="border-2 border-dashed rounded-lg p-8 text-center text-muted-foreground">
-                  <p>No tests added yet</p>
-                  <p>Click "Add Test" to create your first test</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {manualTests.map((test, index) => (
-                    <div key={test.id} className="p-4 border-2 rounded-lg space-y-3 bg-muted/20">
-                      <div className="flex items-center justify-between">
-                        <span>Test #{index + 1}</span>
-                        <div className="flex items-center gap-2">
-                          <Badge variant={test.status === 'passed' ? 'default' : 'destructive'}>
-                            {test.status.toUpperCase()}
-                          </Badge>
+              <div className="space-y-6">
+                {manualTests.map((test, index) => (
+                  <div key={test.id} className="p-4 border-2 rounded-lg space-y-4 bg-muted/20">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">Test #{index + 1}</span>
+                      {manualTests.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeTest(test.id)}
+                        >
+                          <X className="size-4" />
+                        </Button>
+                      )}
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor={`test-name-${test.id}`}>Test Name</Label>
+                        <Input
+                          id={`test-name-${test.id}`}
+                          value={test.name}
+                          onChange={(e) => updateTest(test.id, { name: e.target.value })}
+                          placeholder="e.g., Validate Input Format"
+                          required
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor={`test-description-${test.id}`}>Description</Label>
+                        <Textarea
+                          id={`test-description-${test.id}`}
+                          value={test.description}
+                          onChange={(e) => updateTest(test.id, { description: e.target.value })}
+                          placeholder="Describe what this test validates"
+                          rows={2}
+                          required
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor={`test-code-${test.id}`}>Test Code *</Label>
+                        <Textarea
+                          id={`test-code-${test.id}`}
+                          value={test.testCode}
+                          onChange={(e) => updateTest(test.id, { testCode: e.target.value })}
+                          placeholder="// Paste your code here...&#10;function add(a, b) {&#10;  return a + b;&#10;}"
+                          rows={8}
+                          className="font-mono text-sm"
+                          required
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          💡 Tip: Write or paste the code you want to test
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor={`test-input-${test.id}`}>Test Input</Label>
+                          <Input
+                            id={`test-input-${test.id}`}
+                            value={test.input}
+                            onChange={(e) => updateTest(test.id, { input: e.target.value })}
+                            placeholder="e.g., add(3, 5)"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor={`expected-output-${test.id}`}>Expected Output</Label>
+                          <Input
+                            id={`expected-output-${test.id}`}
+                            value={test.expectedOutput}
+                            onChange={(e) => updateTest(test.id, { expectedOutput: e.target.value })}
+                            placeholder="e.g., 8"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor={`actual-output-${test.id}`}>Actual Output</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            id={`actual-output-${test.id}`}
+                            value={test.actualOutput}
+                            readOnly
+                            className="bg-muted"
+                            placeholder="Output will appear here after running the test"
+                          />
                           <Button
                             type="button"
+                            onClick={() => validateTest(test.id)}
                             variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setEditingTest(test);
-                              setTestDialogOpen(true);
-                            }}
+                            className="gap-2 whitespace-nowrap"
                           >
-                            Edit
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => removeTest(test.id)}
-                          >
-                            <X className="size-4" />
+                            <PlayCircle className="size-4" />
+                            Run Test
                           </Button>
                         </div>
                       </div>
 
-                      <div>
-                        <h4 className="font-medium">{test.name}</h4>
-                        <p className="text-sm text-muted-foreground mt-1">{test.description}</p>
+                      <div className="flex items-center gap-2">
+                        <Label>Status:</Label>
+                        <Badge variant={test.status === 'passed' ? 'default' : 'destructive'}>
+                          {test.status.toUpperCase()}
+                        </Badge>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
+                  </div>
+                ))}
+              </div>
 
               {manualTests.length > 0 && (
                 <div className="flex items-center gap-4 p-3 bg-muted rounded-lg border">
@@ -540,7 +644,6 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
 
             <Separator />
 
-            {/* AI Automated Testing & Code Analysis Section */}
             <div className="space-y-4 p-6 rounded-lg bg-gradient-to-br from-purple-50/50 to-blue-50/50 dark:from-purple-950/20 dark:to-blue-950/20 border-2">
               <div className="flex items-center gap-2">
                 <Sparkles className="size-5 text-purple-600" />
@@ -689,13 +792,6 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
           </form>
         </CardContent>
       </Card>
-
-      <ManualTestDialog
-        open={testDialogOpen}
-        onOpenChange={setTestDialogOpen}
-        onSubmit={handleTestSubmit}
-        editTest={editingTest}
-      />
     </div>
   );
 }
