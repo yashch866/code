@@ -11,6 +11,7 @@ import json
 import os
 import uuid
 import uvicorn
+import asyncio  # Add asyncio import
 from TEST10 import AITestCaseGenerator  # Add at top with other imports
 
 load_dotenv()
@@ -637,25 +638,36 @@ async def run_ai_tests(request: Request):
         if not code:
             raise HTTPException(status_code=400, detail="Code is required")
 
-        # Initialize the test generator
+        # Initialize the AI test generator
         generator = AITestCaseGenerator()
-        
-        # Run tests with streaming output
-        def generate_stream():
-            for line in generator.run(code):
-                if isinstance(line, dict):  # Test result
-                    yield json.dumps(line) + '\n'
-                else:  # Progress message
-                    yield json.dumps({"message": line}) + '\n'
-        
+
+        async def generate_stream():
+            # Use the generator to analyze and test the code in real-time
+            for result in generator.run(code):
+                if isinstance(result, dict):
+                    # Test result
+                    yield f"data: {json.dumps(result)}\n\n"
+                else:
+                    # Progress message
+                    yield f"data: {json.dumps({'message': result})}\n\n"
+                await asyncio.sleep(0.1)  # Small delay to prevent overwhelming the client
+
         if stream:
-            return StreamingResponse(generate_stream(), media_type="text/event-stream")
+            return StreamingResponse(
+                generate_stream(),
+                media_type='text/event-stream',
+                headers={
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                }
+            )
         
-        # Non-streaming response - Run tests and return all results at once
-        results = list(generator.run(code))
-        formatted_results = [r for r in results if isinstance(r, dict)]
-        
-        return formatted_results
+        # Non-streaming response - collect all results
+        results = []
+        for result in generator.run(code):
+            if isinstance(result, dict):
+                results.append(result)
+        return results
             
     except Exception as e:
         print(f"Error running AI tests: {e}")

@@ -152,17 +152,28 @@ export const aiTestsApi = {
     try {
       const response = await api.post('/api/run-ai-tests', {
         code,
-        stream: false // Disable streaming to ensure proper JSON response
+        stream: true // Enable streaming for real-time logs
+      }, {
+        responseType: 'text',
+        headers: {
+          'Accept': 'text/event-stream',
+        }
       });
-      
-      if (!response.data) {
-        throw new Error('No data received from AI tests');
-      }
       
       return response.data;
     } catch (error) {
       console.error('AI tests error:', error);
       throw new Error('Failed to run AI tests: ' + (error.response?.data?.message || error.message));
+    }
+  },
+  
+  getTestResults: async () => {
+    try {
+      const response = await api.get('/api/ai-test-results/latest');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching test results:', error);
+      throw new Error('Failed to fetch test results: ' + (error.response?.data?.message || error.message));
     }
   }
 };

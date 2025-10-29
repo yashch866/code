@@ -47,6 +47,8 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
   const [aiCodeAnalysis, setAICodeAnalysis] = useState<AICodeAnalysis | null>(null);
   const [showAIResults, setShowAIResults] = useState(false);
   const [aiDetailedResults, setAiDetailedResults] = useState([]);
+  const [testLogs, setTestLogs] = useState<string[]>([]);
+  const [isShowingLogs, setIsShowingLogs] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files;
@@ -87,12 +89,7 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
   };
 
   const handleTestSubmit = (test: ManualTest) => {
-    if (editingTest) {
-      setManualTests(prev => prev.map(t => t.id === test.id ? test : t));
-      setEditingTest(null);
-    } else {
-      setManualTests(prev => [...prev, test]);
-    }
+    setManualTests(prev => [...prev, test]);
   };
 
   const removeTest = (id: string) => {
@@ -115,17 +112,67 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
     }
 
     setIsRunningAITests(true);
-    toast.info('Running AI automated tests...', {
-      description: 'Generating and executing test cases...',
-    });
-
+    setTestLogs([]);
+    setIsShowingLogs(true);
+    
     try {
       const codeToTest = submissionType === 'code' ? formData.code : files.map(f => f.content).join('\n');
       
-      const testResults = await aiTestsApi.runTests(codeToTest);
+      // Run AI tests and process the streamed response
+      const response = await fetch('http://localhost:8000/api/run-ai-tests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          code: codeToTest,
+          stream: true
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      // Process the streaming response
+      const reader = response.body?.getReader();
+      let testResults: any[] = [];
       
-      if (!Array.isArray(testResults)) {
-        throw new Error('Invalid test results format');
+      if (!reader) {
+        throw new Error('Failed to get response reader');
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        // Convert the received chunks to text and split into lines
+        const text = new TextDecoder().decode(value);
+        const lines = text.split('\n').filter(line => line.trim());
+        
+        for (const line of lines) {
+          try {
+            // Remove the "data: " prefix if it exists
+            const jsonStr = line.replace(/^data:\s*/, '').trim();
+            if (jsonStr) {
+              const data = JSON.parse(jsonStr);
+              if (data.message) {
+                // Progress message
+                setTestLogs(prev => [...prev, data.message]);
+              } else {
+                // Test result
+                testResults.push(data);
+              }
+            }
+          } catch (e) {
+            console.debug('Failed to parse line:', line);
+          }
+        }
+      }
+
+      // Process the final test results
+      if (testResults.length === 0) {
+        throw new Error('No test results received');
       }
 
       const total = testResults.length;
@@ -663,7 +710,9 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
               <Button
                 type="button"
                 onClick={handleRunAITests}
-                disabled={isRunningAITests || (submissionType === 'code' && !formData.code) || (submissionType === 'attachments' && files.length === 0)}
+                disabled={isRunningAITests || 
+                  (submissionType === 'code' && !formData.code.trim()) || 
+                  (submissionType === 'attachments' && files.length === 0)}
                 className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white gap-2"
                 size="lg"
               >
@@ -679,6 +728,16 @@ export function SubmissionForm({ projects, currentUser, onSubmit }: SubmissionFo
                   </>
                 )}
               </Button>
+
+              {isShowingLogs && (
+                <div className="mt-4 p-4 bg-black text-green-400 font-mono text-sm rounded-lg h-96 overflow-auto">
+                  {testLogs.map((log, index) => (
+                    <div key={index} className="whitespace-pre-wrap">
+                      {log}
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {aiDetailedResults && aiDetailedResults.length > 0 && aiTestResults && aiCodeAnalysis && (
                 <div className="space-y-4 pt-4 border-t">
